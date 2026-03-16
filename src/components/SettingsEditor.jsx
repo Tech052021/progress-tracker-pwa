@@ -46,18 +46,43 @@ export default function SettingsEditor({ data, setData, onClose }) {
   const [draft, setDraft] = useState(() => ({ categories: migrateCategories(data) }));
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
+  // Active category shown in the editor (tabs)
+  const [activeCatId, setActiveCatId] = useState(() => {
+    const initial = migrateCategories(data);
+    return initial && initial.length ? initial[0].id : null;
+  });
+
+  useEffect(() => {
+    // Ensure activeCatId stays valid if categories change externally
+    if (!draft.categories || !draft.categories.length) {
+      setActiveCatId(null);
+      return;
+    }
+    if (!draft.categories.find(c => c.id === activeCatId)) {
+      setActiveCatId(draft.categories[0].id);
+    }
+  }, [draft.categories, activeCatId]);
 
   const updateCategoryName = (catId, name) => {
     setDraft((d) => ({ categories: d.categories.map(c => c.id === catId ? { ...c, name } : c) }));
   };
 
   const addCategory = () => {
-    setDraft((d) => ({ categories: [...d.categories, { id: uid(), name: 'New Category', goals: [] }] }));
+    const newId = uid();
+    setDraft((d) => ({ categories: [...d.categories, { id: newId, name: 'New Category', goals: [] }] }));
+    // activate the newly added category so the user immediately edits it
+    setActiveCatId(newId);
   };
 
   const removeCategory = (catId) => {
     if (!window.confirm('Delete this category?')) return;
-    setDraft((d) => ({ categories: d.categories.filter(c => c.id !== catId) }));
+    setDraft((d) => {
+      const remaining = d.categories.filter(c => c.id !== catId);
+      // choose a sensible active category after deletion
+      const nextActive = remaining.length ? remaining[0].id : null;
+      setActiveCatId(nextActive);
+      return { categories: remaining };
+    });
   };
 
   const addGoal = (catId) => {
@@ -119,6 +144,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
     setDraft({ categories: migrateCategories(data) });
     if (typeof onClose === 'function') onClose();
   };
+
+  const activeCat = draft.categories.find(c => c.id === activeCatId) || (draft.categories[0] || null);
+
   return (
     <div className="modal-backdrop" onClick={() => { if (typeof onClose === 'function') onClose(); }}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -129,37 +157,50 @@ export default function SettingsEditor({ data, setData, onClose }) {
           </div>
 
           <div>
-            {draft.categories.map((cat) => (
-              <div className="form-card" key={cat.id} style={{ marginBottom: 12 }}>
+            {/* Tabs for categories */}
+            <div className="settings-tabs">
+              <div className="tabs" role="tablist">
+                {draft.categories.map((cat) => (
+                  <button key={cat.id} type="button" className={`tab ${cat.id === activeCatId ? 'active' : ''}`} onClick={() => setActiveCatId(cat.id)}>{cat.name}</button>
+                ))}
+              </div>
+              <div style={{ marginLeft: 12 }}>
+                <button className="secondary" onClick={addCategory}>Add category</button>
+              </div>
+            </div>
+
+            {/* Show only the active category's form */}
+            {activeCat ? (
+              <div className="form-card" key={activeCat.id} style={{ marginBottom: 12 }}>
                 <div className="category-header" style={{ marginBottom: 8 }}>
-                  <input className="category-name" value={cat.name} onChange={(e) => updateCategoryName(cat.id, e.target.value)} />
-                  <button className="secondary" onClick={() => removeCategory(cat.id)}>Delete category</button>
+                  <input className="category-name" value={activeCat.name} onChange={(e) => updateCategoryName(activeCat.id, e.target.value)} />
+                  <button className="secondary" onClick={() => removeCategory(activeCat.id)}>Delete category</button>
                 </div>
 
                 <div className="goals-list">
-                  {cat.goals.map((g) => (
+                  {activeCat.goals.map((g) => (
                     <div className="goal-row" key={g.id}>
-                      <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(cat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} />
-                      <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(cat.id, g.id, { target: Number(e.target.value) })} />
-                      <select className="goal-period" value={g.period} onChange={(e) => updateGoal(cat.id, g.id, { period: e.target.value })}>
+                      <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} />
+                      <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(activeCat.id, g.id, { target: Number(e.target.value) })} />
+                      <select className="goal-period" value={g.period} onChange={(e) => updateGoal(activeCat.id, g.id, { period: e.target.value })}>
                         <option value="week">/week</option>
                         <option value="month">/month</option>
                         <option value="target">target</option>
                       </select>
-                      <button className="secondary" onClick={() => removeGoal(cat.id, g.id)}>Delete</button>
+                      <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
                     </div>
                   ))}
 
                   <div style={{ marginTop: 8 }}>
-                    <button className="secondary" onClick={() => addGoal(cat.id)}>Add goal</button>
+                    <button className="secondary" onClick={() => addGoal(activeCat.id)}>Add goal</button>
                   </div>
                 </div>
               </div>
-            ))}
-
-            <div style={{ marginTop: 8 }}>
-              <button className="primary" onClick={addCategory}>Add category</button>
-            </div>
+            ) : (
+              <div className="empty-state">
+                No categories defined. Add one to get started.
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button className="secondary" onClick={cancel}>Cancel</button>
@@ -171,3 +212,4 @@ export default function SettingsEditor({ data, setData, onClose }) {
     </div>
   );
 }
+

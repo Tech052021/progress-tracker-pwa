@@ -1,4 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import * as React from 'react';
+// ensure `React` is available at runtime for any classic-jsx compiled code
+try { window.React = React; } catch (e) { /* noop on non-browser */ }
+const { useEffect, useMemo, useRef, useState } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 
