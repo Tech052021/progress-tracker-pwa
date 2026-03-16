@@ -59,6 +59,14 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
 .chip { padding: 5px 10px; background: #f1f5f9; }
 .hero-actions { display: flex; flex-direction: column; gap: 10px; }
 
+/* small clock display under hero actions */
+.clock {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace;
+  font-size: 14px;
+  color: #475569;
+  text-align: right;
+}
+
 .primary, .secondary, .tab, .link-danger {
   border-radius: 16px;
   border: 0;
@@ -69,14 +77,18 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
 .primary {
   background: #0f172a;
   color: #fff;
-  padding: 11px 14px;
+  padding: 8px 10px;
   font-weight: 700;
+  border-radius: 12px;
+  font-size: 13px;
 }
 .secondary {
   background: #e2e8f0;
   color: #0f172a;
-  padding: 11px 14px;
+  padding: 8px 10px;
   font-weight: 700;
+  border-radius: 12px;
+  font-size: 13px;
 }
 .link-danger {
   background: transparent;

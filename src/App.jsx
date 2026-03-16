@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Clock from './components/Clock';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
 const ISO_DATE = () => new Date().toISOString().slice(0, 10);
@@ -165,6 +166,7 @@ function App() {
           <button className="primary" onClick={exportData}>Export backup</button>
           <button className="secondary" onClick={() => fileInputRef.current?.click()}>Import backup</button>
           <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={importData} />
+          <Clock />
         </div>
       </header>
 
