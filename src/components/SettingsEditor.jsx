@@ -46,6 +46,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
   const [draft, setDraft] = useState(() => ({ categories: migrateCategories(data) }));
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
+  // Add-category dialog state (do not mutate categories until save)
+  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
+  const [pendingCategoryName, setPendingCategoryName] = useState('');
   // Active category shown in the editor (tabs)
   const [activeCatId, setActiveCatId] = useState(() => {
     const initial = migrateCategories(data);
@@ -68,10 +71,32 @@ export default function SettingsEditor({ data, setData, onClose }) {
   };
 
   const addCategory = () => {
+    setPendingCategoryName('');
+    setShowAddCategoryDialog(true);
+  };
+
+  const confirmAddCategory = () => {
+    const name = pendingCategoryName.trim();
+    if (!name) {
+      alert('Category name cannot be blank');
+      return;
+    }
+    if (draft.categories.some((c) => c.name.trim().toLowerCase() === name.toLowerCase())) {
+      alert('A category with this name already exists');
+      return;
+    }
+
     const newId = uid();
-    setDraft((d) => ({ categories: [...d.categories, { id: newId, name: 'New Category', goals: [] }] }));
-    // activate the newly added category so the user immediately edits it
+    setDraft((d) => ({ categories: [...d.categories, { id: newId, name, goals: [] }] }));
+    // Activate the newly added category so the user can edit goals immediately.
     setActiveCatId(newId);
+    setShowAddCategoryDialog(false);
+    setPendingCategoryName('');
+  };
+
+  const cancelAddCategory = () => {
+    setShowAddCategoryDialog(false);
+    setPendingCategoryName('');
   };
 
   const removeCategory = (catId) => {
@@ -207,6 +232,34 @@ export default function SettingsEditor({ data, setData, onClose }) {
               <button className="primary" onClick={apply}>Apply</button>
             </div>
           </div>
+
+          {showAddCategoryDialog && (
+            <div className="submodal-backdrop" onClick={cancelAddCategory}>
+              <div className="submodal-content" onClick={(e) => e.stopPropagation()}>
+                <h3 style={{ marginBottom: 8 }}>Add category</h3>
+                <p style={{ marginBottom: 12, color: '#64748b' }}>
+                  Create a category name. It will be added only after you click Save.
+                </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    confirmAddCategory();
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={pendingCategoryName}
+                    onChange={(e) => setPendingCategoryName(e.target.value)}
+                    placeholder="Example: Career"
+                  />
+                  <div className="submodal-actions">
+                    <button type="button" className="secondary" onClick={cancelAddCategory}>Cancel</button>
+                    <button type="submit" className="primary">Save</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
