@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
@@ -71,6 +72,7 @@ function useStoredData() {
 function App() {
   const [data, setData] = useStoredData();
   const [tab, setTab] = useState('dashboard');
+  const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef(null);
 
   const addEntry = (bucket, entry) => {
@@ -117,6 +119,60 @@ function App() {
       .map((x) => ({ label: x.date.slice(5), value: Number(x.weight) }))
       .filter((x) => !Number.isNaN(x.value));
   }, [data.entries.weights]);
+
+  // Helpers to derive categories and goals (fallback to legacy settings)
+  const categories = useMemo(() => {
+    const s = data.settings || {};
+    if (Array.isArray(s.categories) && s.categories.length) return s.categories;
+
+    // fallback: build categories from legacy fields
+    return [
+      {
+        id: 'health',
+        name: 'Health',
+        goals: [
+          { id: 'workout', name: 'Workout', target: Number(s.workoutsPerWeek || 5), period: 'week' },
+          { id: 'weight', name: 'Weight', target: s.targetWeight || '', period: 'target' }
+        ]
+      },
+      {
+        id: 'learning',
+        name: 'Learning',
+        goals: [{ id: 'leetcode', name: 'LeetCode', target: Number(s.leetcodePerWeek || 4), period: 'week' }]
+      },
+      {
+        id: 'practice',
+        name: 'Practice',
+        goals: [
+          { id: 'pool', name: 'Pool', target: Number(s.poolPracticePerWeek || 2), period: 'week' },
+          { id: 'uvm', name: 'UVM', target: Number(s.uvmTopicsPerMonth || 2), period: 'month' }
+        ]
+      }
+    ];
+  }, [data.settings]);
+
+  function mapGoalToBucket(goalName) {
+    const n = String(goalName).toLowerCase();
+    if (n.includes('workout')) return 'workouts';
+    if (n.includes('weight')) return 'weights';
+    if (n.includes('leetcode')) return 'leetcode';
+    if (n.includes('uvm')) return 'uvm';
+    if (n.includes('ai')) return 'ai';
+    if (n.includes('bug') || n.includes('bugs')) return 'bugs';
+    if (n.includes('mentor')) return 'mentor';
+    if (n.includes('pool')) return 'pool';
+    return null;
+  }
+
+  function goalCount(goal) {
+    const bucket = mapGoalToBucket(goal.name);
+    if (!bucket) return 0;
+    return data.entries[bucket]?.filter((x) => {
+      // Count by week/month depending on period
+      if (goal.period === 'month') return x.date.startsWith(currentMonth);
+      return getWeekId(x.date) === currentWeek;
+    }).length || 0;
+  }
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -167,20 +223,20 @@ function App() {
           <button className="secondary" onClick={() => fileInputRef.current?.click()}>Import backup</button>
           <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={importData} />
           <Clock />
+          <button className="secondary settings-btn" onClick={() => setShowSettings(s => !s)}>{showSettings ? 'Close settings' : 'Settings'}</button>
         </div>
       </header>
 
       <section className="card-grid metrics-grid">
-        <MetricCard title="Workouts this week" value={weekStats.workouts} subtitle={`Goal ${data.settings.workoutsPerWeek}`} />
-        <MetricCard title="LeetCode this week" value={weekStats.leetcode} subtitle={`Goal ${data.settings.leetcodePerWeek}`} />
-        <MetricCard title="Pool this week" value={weekStats.pool} subtitle={`Goal ${data.settings.poolPracticePerWeek}`} />
-        <MetricCard title="UVM this month" value={monthStats.uvm} subtitle={`Goal ${data.settings.uvmTopicsPerMonth}`} />
-        <MetricCard title="Weight" value={latestWeight} subtitle={data.settings.targetWeight ? `Target ${data.settings.targetWeight}` : 'Set target in Settings'} />
+        {/** render top goals from categories as metric cards */}
+        {categories.flatMap(c => c.goals).slice(0, 5).map((g) => (
+          <MetricCard key={g.id} title={`${g.name}${g.period === 'week' ? ' this week' : g.period === 'month' ? ' this month' : ''}`} value={g.period === 'target' ? (data.settings.targetWeight || '-') : goalCount(g)} subtitle={g.period === 'target' ? (g.target ? `Target ${g.target}` : 'Set target in Settings') : `Goal ${g.target}`} />
+        ))}
       </section>
 
       <nav className="tabs">
-        {['dashboard', 'career', 'health', 'pool', 'settings'].map((item) => (
-          <button key={item} className={tab === item ? 'tab active' : 'tab'} onClick={() => setTab(item)}>
+        {[ 'dashboard', ...categories.map(c => c.name) ].map((item) => (
+          <button key={item} className={tab === item ? 'tab active' : 'tab'} onClick={() => { setTab(item); setShowSettings(false); }}>
             {capitalize(item)}
           </button>
         ))}
@@ -237,6 +293,43 @@ function App() {
             </section>
           </section>
         </>
+      )}
+
+      {/* Dynamic category view */}
+      {tab !== 'dashboard' && !showSettings && (
+        (() => {
+          const cat = categories.find(c => c.name === tab);
+          if (!cat) return null;
+          return (
+            <section className="card-grid two-up">
+              <section className="card stack-gap">
+                <div className="card-head">
+                  <h2>{cat.name}</h2>
+                  <p>Editable goals and recent entries for {cat.name}</p>
+                </div>
+                {cat.goals.map((g) => (
+                  <div key={g.id} style={{ marginBottom: 12 }}>
+                    <ProgressRow label={g.name} value={goalCount(g)} target={g.target} />
+                  </div>
+                ))}
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>Recent entries</h2>
+                  <p>Newest activity relevant to {cat.name}</p>
+                </div>
+                <EntryList
+                  items={mergeEntries(cat.goals.map((g) => {
+                    const bucket = mapGoalToBucket(g.name);
+                    return [bucket || 'unknown', data.entries[bucket] || [], g.name];
+                  }))}
+                  onDelete={removeEntry}
+                />
+              </section>
+            </section>
+          );
+        })()
       )}
 
       {tab === 'career' && (
@@ -323,32 +416,8 @@ function App() {
         </section>
       )}
 
-      {tab === 'settings' && (
-        <section className="card stack-gap">
-          <div className="card-head">
-            <h2>Settings</h2>
-            <p>Make the app work for other users and different goals too</p>
-          </div>
-          <div className="form-grid">
-            <TextField label="App name" value={data.profile.appName} onChange={(value) => setData((prev) => ({ ...prev, profile: { ...prev.profile, appName: value } }))} />
-            <TextField label="Your name" value={data.profile.ownerName} onChange={(value) => setData((prev) => ({ ...prev, profile: { ...prev.profile, ownerName: value } }))} />
-            <TextField label="Long-term goal" value={data.profile.longTermGoal} onChange={(value) => setData((prev) => ({ ...prev, profile: { ...prev.profile, longTermGoal: value } }))} />
-            <TextField label="Target companies / targets" value={data.profile.targetCompanies} onChange={(value) => setData((prev) => ({ ...prev, profile: { ...prev.profile, targetCompanies: value } }))} />
-            <NumberField label="Workouts per week" value={data.settings.workoutsPerWeek} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, workoutsPerWeek: value } }))} />
-            <NumberField label="LeetCode per week" value={data.settings.leetcodePerWeek} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, leetcodePerWeek: value } }))} />
-            <NumberField label="Pool sessions per week" value={data.settings.poolPracticePerWeek} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, poolPracticePerWeek: value } }))} />
-            <NumberField label="UVM topics per month" value={data.settings.uvmTopicsPerMonth} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, uvmTopicsPerMonth: value } }))} />
-            <NumberField label="AI experiments per month" value={data.settings.aiExperimentsPerMonth} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, aiExperimentsPerMonth: value } }))} />
-            <NumberField label="Career block minutes" value={data.settings.careerBlockMinutes} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, careerBlockMinutes: value } }))} />
-            <TextField label="Target weight" value={data.settings.targetWeight} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, targetWeight: value } }))} />
-            <TextField label="Current weight" value={data.settings.currentWeight} onChange={(value) => setData((prev) => ({ ...prev, settings: { ...prev.settings, currentWeight: value } }))} />
-          </div>
-          <TextAreaField label="Daily reminder" value={data.reminders.todayMustWin} onChange={(value) => setData((prev) => ({ ...prev, reminders: { ...prev.reminders, todayMustWin: value } }))} />
-          <TextAreaField label="Pool pre-shot routine" value={data.reminders.preShotRoutine} onChange={(value) => setData((prev) => ({ ...prev, reminders: { ...prev.reminders, preShotRoutine: value } }))} />
-          <div className="settings-actions">
-            <button className="secondary" onClick={resetAll}>Reset all data</button>
-          </div>
-        </section>
+      {showSettings && (
+        <SettingsEditor data={data} setData={setData} onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

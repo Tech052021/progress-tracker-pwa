@@ -88,6 +88,30 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
   min-width: 0;
 }
 
+.settings-btn {
+  align-self: flex-end;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+/* Modal for settings editor */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 20px;
+}
+.modal-content {
+  width: 100%;
+  max-width: 980px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
 /* slightly smaller on very small screens before the full-width mobile rule applies */
 @media (max-width: 420px) {
   .hero-actions .primary, .hero-actions .secondary { padding: 6px 6px; font-size: 11px; }
@@ -254,6 +278,16 @@ input:focus, textarea:focus, select:focus {
   background: #f8fafc;
   padding: 14px;
 }
+
+/* Settings editor layout tweaks */
+.form-card .category-header { display: flex; gap: 12px; align-items: center; }
+.form-card .category-name { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; }
+.form-card .goals-list { margin-top: 6px; }
+.goal-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.goal-name { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; }
+.goal-target { width: 80px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; }
+.goal-period { width: 110px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; }
+.goal-row .secondary { margin-left: 4px; }
 .entry-top {
   display: flex;
   justify-content: space-between;
