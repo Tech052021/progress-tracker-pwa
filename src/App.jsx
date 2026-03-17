@@ -8,6 +8,32 @@ import Clock from './components/Clock';
 const STORAGE_KEY = 'progress_tracker_prod_v1';
 const ISO_DATE = () => new Date().toISOString().slice(0, 10);
 
+function inferGoalUnit(goalName, weightUnit = 'lb') {
+  const n = String(goalName || '').toLowerCase();
+  if (n.includes('weight')) return weightUnit;
+  if (n.includes('workout') || n.includes('pool')) return 'sessions';
+  if (n.includes('leetcode') || n.includes('problem')) return 'problems';
+  if (n.includes('uvm') || n.includes('topic')) return 'topics';
+  return 'count';
+}
+
+function normalizeCategories(categories, weightUnit = 'lb') {
+  if (!Array.isArray(categories)) return [];
+  return categories.map((category) => ({
+    ...category,
+    goals: Array.isArray(category.goals)
+      ? category.goals.map((goal) => ({
+        ...goal,
+        unit: goal.unit || inferGoalUnit(goal.name, weightUnit)
+      }))
+      : []
+  }));
+}
+
+function uid() {
+  try { return crypto.randomUUID(); } catch { return String(Math.random()).slice(2); }
+}
+
 function getWeekId(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   const day = date.getDay() || 7;
@@ -26,7 +52,13 @@ const defaultData = {
     appName: 'Progress Tracker',
     ownerName: '',
     longTermGoal: 'Director of AI',
+    targetDescriptor: 'NVIDIA, Google',
+    targetDate: '',
     targetCompanies: 'NVIDIA, Google'
+  },
+  goalPlan: {
+    shortTermGoals: [],
+    actionItems: []
   },
   settings: {
     workoutsPerWeek: 5,
@@ -36,7 +68,11 @@ const defaultData = {
     aiExperimentsPerMonth: 1,
     careerBlockMinutes: 45,
     targetWeight: '',
-    currentWeight: ''
+    currentWeight: '',
+    units: {
+      weight: 'lb',
+      duration: 'min'
+    }
   },
   reminders: {
     todayMustWin: 'Workout + solid workday + 30 to 45 minute career block',
@@ -55,11 +91,75 @@ const defaultData = {
   }
 };
 
+function normalizeData(raw) {
+  const incoming = raw && typeof raw === 'object' ? raw : {};
+  const profile = incoming.profile || {};
+  const shortTermGoals = Array.isArray(incoming.goalPlan?.shortTermGoals)
+    ? incoming.goalPlan.shortTermGoals.map((goal) => ({
+      id: goal.id || uid(),
+      title: goal.title || '',
+      targetValue: Number(goal.targetValue) || 0,
+      currentValue: Number(goal.currentValue) || 0,
+      dueDate: goal.dueDate || ''
+    }))
+    : [];
+  const actionItems = Array.isArray(incoming.goalPlan?.actionItems)
+    ? incoming.goalPlan.actionItems.map((item) => ({
+      id: item.id || uid(),
+      title: item.title || '',
+      goalId: item.goalId || '',
+      dueDate: item.dueDate || '',
+      status: item.status === 'done' ? 'done' : 'todo'
+    }))
+    : [];
+
+  const incomingSettings = incoming.settings || {};
+  const incomingUnits = incomingSettings.units || {};
+  const normalizedWeightUnit = incomingUnits.weight || incomingSettings.weightUnit || defaultData.settings.units.weight;
+
+  return {
+    ...defaultData,
+    ...incoming,
+    profile: {
+      ...defaultData.profile,
+      ...profile,
+      appName: defaultData.profile.appName,
+      targetDescriptor: profile.targetDescriptor || profile.targetCompanies || defaultData.profile.targetDescriptor,
+      targetDate: profile.targetDate || ''
+    },
+    goalPlan: {
+      shortTermGoals,
+      actionItems
+    },
+    settings: {
+      ...defaultData.settings,
+      ...incomingSettings,
+      categories: Array.isArray(incomingSettings.categories)
+        ? normalizeCategories(incomingSettings.categories, normalizedWeightUnit)
+        : incomingSettings.categories,
+      units: {
+        ...defaultData.settings.units,
+        ...incomingUnits,
+        weight: normalizedWeightUnit,
+        duration: incomingUnits.duration || incomingSettings.durationUnit || defaultData.settings.units.duration
+      }
+    },
+    reminders: {
+      ...defaultData.reminders,
+      ...(incoming.reminders || {})
+    },
+    entries: {
+      ...defaultData.entries,
+      ...(incoming.entries || {})
+    }
+  };
+}
+
 function useStoredData() {
   const [data, setData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : defaultData;
+      return saved ? normalizeData(JSON.parse(saved)) : defaultData;
     } catch {
       return defaultData;
     }
@@ -100,6 +200,25 @@ function App() {
 
   const currentWeek = getWeekId(ISO_DATE());
   const currentMonth = getMonthId();
+  const weightUnit = data.settings?.units?.weight || 'lb';
+  const durationUnit = data.settings?.units?.duration || 'min';
+
+  const formatGoalValue = (value, unit) => {
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) return '-';
+    if (!unit || unit === 'count') return `${parsed}`;
+    return `${parsed} ${unit}`;
+  };
+
+  const formatDurationValue = (minutes) => {
+    const parsed = Number(minutes);
+    if (Number.isNaN(parsed)) return `${minutes}`;
+    if (durationUnit === 'hr') {
+      const hours = Math.round((parsed / 60) * 10) / 10;
+      return `${hours} hr`;
+    }
+    return `${Math.round(parsed)} min`;
+  };
 
   const weekStats = {
     workouts: data.entries.workouts.filter((x) => getWeekId(x.date) === currentWeek).length,
@@ -114,7 +233,16 @@ function App() {
     mentor: data.entries.mentor.filter((x) => x.date.startsWith(currentMonth)).length
   };
 
-  const latestWeight = data.entries.weights[0]?.weight || data.settings.currentWeight || '-';
+  const shortTermGoals = data.goalPlan?.shortTermGoals || [];
+  const actionItems = data.goalPlan?.actionItems || [];
+  const completedActionItems = actionItems.filter((item) => item.status === 'done').length;
+
+  const averageGoalProgress = shortTermGoals.length
+    ? Math.round(shortTermGoals.reduce((sum, goal) => {
+      if (!goal.targetValue) return sum;
+      return sum + Math.min(1, goal.currentValue / goal.targetValue);
+    }, 0) / shortTermGoals.length * 100)
+    : 0;
 
   const weightSeries = useMemo(() => {
     return [...data.entries.weights]
@@ -134,25 +262,33 @@ function App() {
         id: 'health',
         name: 'Health',
         goals: [
-          { id: 'workout', name: 'Workout', target: Number(s.workoutsPerWeek || 5), period: 'week' },
-          { id: 'weight', name: 'Weight', target: s.targetWeight || '', period: 'target' }
+          { id: 'workout', name: 'Workout', target: Number(s.workoutsPerWeek || 5), period: 'week', unit: 'sessions' },
+          { id: 'weight', name: 'Weight', target: s.targetWeight || '', period: 'target', unit: weightUnit }
         ]
       },
       {
         id: 'learning',
         name: 'Learning',
-        goals: [{ id: 'leetcode', name: 'LeetCode', target: Number(s.leetcodePerWeek || 4), period: 'week' }]
+        goals: [{ id: 'leetcode', name: 'LeetCode', target: Number(s.leetcodePerWeek || 4), period: 'week', unit: 'problems' }]
       },
       {
         id: 'practice',
         name: 'Practice',
         goals: [
-          { id: 'pool', name: 'Pool', target: Number(s.poolPracticePerWeek || 2), period: 'week' },
-          { id: 'uvm', name: 'UVM', target: Number(s.uvmTopicsPerMonth || 2), period: 'month' }
+          { id: 'pool', name: 'Pool', target: Number(s.poolPracticePerWeek || 2), period: 'week', unit: 'sessions' },
+          { id: 'uvm', name: 'UVM', target: Number(s.uvmTopicsPerMonth || 2), period: 'month', unit: 'topics' }
         ]
       }
     ];
-  }, [data.settings]);
+  }, [data.settings, weightUnit]);
+
+  const normalizedCategories = useMemo(() => normalizeCategories(categories, weightUnit), [categories, weightUnit]);
+
+  const formatGoalUnit = (goal) => {
+    const unit = String(goal.unit || '').trim();
+    if (!unit || unit === 'count') return '';
+    return ` ${unit}`;
+  };
 
   function mapGoalToBucket(goalName) {
     const n = String(goalName).toLowerCase();
@@ -211,13 +347,14 @@ function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">Production-ready personal tracker</p>
-          <h1>{data.profile.appName}</h1>
+          <h1>Progress Tracker</h1>
           <p className="hero-copy">
             Build momentum across career, health, learning, and practice — even when life is messy.
           </p>
           <div className="hero-badges">
             <span className="badge">Goal: {data.profile.longTermGoal}</span>
-            <span className="badge">Targets: {data.profile.targetCompanies}</span>
+            <span className="badge">Target: {data.profile.targetDescriptor || 'Set in settings'}</span>
+            <span className="badge">Target date: {data.profile.targetDate || 'Set in settings'}</span>
             <span className="badge">{currentWeek}</span>
           </div>
         </div>
@@ -232,13 +369,13 @@ function App() {
 
       <section className="card-grid metrics-grid">
         {/** render top goals from categories as metric cards */}
-        {categories.flatMap(c => c.goals).slice(0, 5).map((g) => (
-          <MetricCard key={g.id} title={`${g.name}${g.period === 'week' ? ' this week' : g.period === 'month' ? ' this month' : ''}`} value={g.period === 'target' ? (data.settings.targetWeight || '-') : goalCount(g)} subtitle={g.period === 'target' ? (g.target ? `Target ${g.target}` : 'Set target in Settings') : `Goal ${g.target}`} />
+        {normalizedCategories.flatMap(c => c.goals).slice(0, 5).map((g) => (
+          <MetricCard key={g.id} title={`${g.name}${g.period === 'week' ? ' this week' : g.period === 'month' ? ' this month' : ''}`} value={g.period === 'target' ? formatGoalValue(g.target, g.unit) : goalCount(g)} subtitle={g.period === 'target' ? (g.target ? `Target ${formatGoalValue(g.target, g.unit)}` : 'Set target in Settings') : `Goal ${g.target}${formatGoalUnit(g)}`} />
         ))}
       </section>
 
       <nav className="tabs">
-        {[ 'dashboard', ...categories.map(c => c.name) ].map((item) => (
+        {[ 'dashboard', ...normalizedCategories.map(c => c.name) ].map((item) => (
           <button key={item} className={tab === item ? 'tab active' : 'tab'} onClick={() => { setTab(item); setShowSettings(false); }}>
             {capitalize(item)}
           </button>
@@ -247,6 +384,27 @@ function App() {
 
       {tab === 'dashboard' && (
         <>
+          <section className="card-grid two-up">
+            <section className="card">
+              <div className="card-head">
+                <h2>Goal roadmap</h2>
+                <p>Break down the long-term goal into measurable short-term goals and action items.</p>
+              </div>
+              <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
+              <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
+              <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
+              <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h2>Upcoming milestones</h2>
+                <p>Next due goals and actions</p>
+              </div>
+              <RoadmapList goals={shortTermGoals} actions={actionItems} />
+            </section>
+          </section>
+
           <section className="card-grid two-up">
             <section className="card">
               <div className="card-head">
@@ -276,7 +434,7 @@ function App() {
             <section className="card">
               <div className="card-head">
                 <h2>Weight trend</h2>
-                <p>Simple built-in chart</p>
+                <p>Simple built-in chart ({weightUnit})</p>
               </div>
               <MiniLineChart data={weightSeries} />
             </section>
@@ -288,8 +446,8 @@ function App() {
               </div>
               <div className="note-box">{data.reminders.todayMustWin}</div>
               <div className="quick-actions-grid">
-                <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} compact />
-                <WeightForm onSave={(entry) => addEntry('weights', entry)} compact />
+                <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} compact durationUnit={durationUnit} />
+                <WeightForm onSave={(entry) => addEntry('weights', entry)} compact weightUnit={weightUnit} />
                 <LeetCodeForm onSave={(entry) => addEntry('leetcode', entry)} compact />
                 <PoolForm onSave={(entry) => addEntry('pool', entry)} compact />
               </div>
@@ -301,7 +459,7 @@ function App() {
       {/* Dynamic category view */}
       {tab !== 'dashboard' && !showSettings && (
         (() => {
-          const cat = categories.find(c => c.name === tab);
+          const cat = normalizedCategories.find(c => c.name === tab);
           if (!cat) return null;
           return (
             <section className="card-grid two-up">
@@ -312,7 +470,7 @@ function App() {
                 </div>
                 {cat.goals.map((g) => (
                   <div key={g.id} style={{ marginBottom: 12 }}>
-                    <ProgressRow label={g.name} value={goalCount(g)} target={g.target} />
+                    <ProgressRow label={g.name} value={goalCount(g)} target={g.target} unit={g.unit} />
                   </div>
                 ))}
               </section>
@@ -375,8 +533,8 @@ function App() {
               <h2>Health logs</h2>
               <p>Track movement and body trend</p>
             </div>
-            <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} />
-            <WeightForm onSave={(entry) => addEntry('weights', entry)} />
+            <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} durationUnit={durationUnit} />
+            <WeightForm onSave={(entry) => addEntry('weights', entry)} weightUnit={weightUnit} />
           </section>
           <section className="card">
             <div className="card-head">
@@ -385,8 +543,8 @@ function App() {
             </div>
             <EntryList
               items={mergeEntries([
-                ['workouts', data.entries.workouts.map((x) => ({ ...x, title: `${x.kind} · ${x.duration} min`, details: x.notes || '' })), 'Workout'],
-                ['weights', data.entries.weights.map((x) => ({ ...x, title: `${x.weight} lb`, details: '' })), 'Weight']
+                ['workouts', data.entries.workouts.map((x) => ({ ...x, title: `${x.kind} · ${formatDurationValue(x.duration)}`, details: x.notes || '' })), 'Workout'],
+                ['weights', data.entries.weights.map((x) => ({ ...x, title: `${x.weight} ${weightUnit}`, details: '' })), 'Weight']
               ])}
               onDelete={removeEntry}
             />
@@ -449,13 +607,14 @@ function MetricCard({ title, value, subtitle }) {
   );
 }
 
-function ProgressRow({ label, value, target }) {
+function ProgressRow({ label, value, target, unit = 'count' }) {
   const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
+  const suffix = unit && unit !== 'count' ? ` ${unit}` : '';
   return (
     <div className="progress-row">
       <div className="progress-header">
         <span>{label}</span>
-        <span>{value}/{target}</span>
+        <span>{value}{suffix}/{target}{suffix}</span>
       </div>
       <div className="progress-track"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
     </div>
@@ -525,33 +684,86 @@ function MiniLineChart({ data }) {
   );
 }
 
+function RoadmapList({ goals, actions }) {
+  const upcomingGoals = [...goals]
+    .filter((goal) => goal.dueDate)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 3);
+  const openActions = [...actions]
+    .filter((item) => item.status !== 'done')
+    .sort((a, b) => (a.dueDate || '9999-99-99').localeCompare(b.dueDate || '9999-99-99'))
+    .slice(0, 4);
+
+  if (!upcomingGoals.length && !openActions.length) {
+    return <div className="empty-state">Add short-term goals and action items in Settings.</div>;
+  }
+
+  return (
+    <div className="entry-list">
+      {upcomingGoals.map((goal) => (
+        <article className="entry-card" key={goal.id}>
+          <div className="entry-top">
+            <span className="chip">Short-term goal</span>
+            <span className="entry-date">{goal.dueDate || 'No date'}</span>
+          </div>
+          <h4>{goal.title}</h4>
+          <p>{goal.currentValue}/{goal.targetValue || 0} completed</p>
+        </article>
+      ))}
+      {openActions.map((item) => (
+        <article className="entry-card" key={item.id}>
+          <div className="entry-top">
+            <span className="chip">Action item</span>
+            <span className="entry-date">{item.dueDate || 'No date'}</span>
+          </div>
+          <h4>{item.title}</h4>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function BaseForm({ title, children, compact = false }) {
   return <div className={compact ? 'mini-form' : 'form-card'}><h3>{title}</h3>{children}</div>;
 }
 
-function WorkoutForm({ onSave, compact = false }) {
+function minutesToDurationDisplay(minutes, unit) {
+  const parsed = Number(minutes);
+  if (Number.isNaN(parsed)) return 0;
+  if (unit === 'hr') return Math.round((parsed / 60) * 10) / 10;
+  return Math.round(parsed);
+}
+
+function durationDisplayToMinutes(value, unit) {
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return 0;
+  if (unit === 'hr') return Math.round(parsed * 60);
+  return Math.round(parsed);
+}
+
+function WorkoutForm({ onSave, compact = false, durationUnit = 'min' }) {
   const [date, setDate] = useState(ISO_DATE());
   const [kind, setKind] = useState('Strength');
-  const [duration, setDuration] = useState(35);
+  const [duration, setDuration] = useState(() => minutesToDurationDisplay(35, durationUnit));
   const [notes, setNotes] = useState('');
   return (
     <BaseForm title="Workout" compact={compact}>
       <DateField value={date} onChange={setDate} />
       <SelectField value={kind} onChange={setKind} options={['Strength', 'Cardio', 'Walk', 'Mobility']} />
-      <NumberField label="Minutes" value={duration} onChange={setDuration} inline />
+      <NumberField label={`Duration (${durationUnit})`} value={duration} onChange={setDuration} inline min={0} step={durationUnit === 'hr' ? 0.1 : 1} />
       {!compact && <TextAreaField label="Notes" value={notes} onChange={setNotes} />}
-      <button className="primary" onClick={() => { onSave({ date, kind, duration, notes }); setNotes(''); }}>Save workout</button>
+      <button className="primary" onClick={() => { onSave({ date, kind, duration: durationDisplayToMinutes(duration, durationUnit), notes }); setNotes(''); }}>Save workout</button>
     </BaseForm>
   );
 }
 
-function WeightForm({ onSave, compact = false }) {
+function WeightForm({ onSave, compact = false, weightUnit = 'lb' }) {
   const [date, setDate] = useState(ISO_DATE());
   const [weight, setWeight] = useState('');
   return (
     <BaseForm title="Weight" compact={compact}>
       <DateField value={date} onChange={setDate} />
-      <TextField label="Weight" value={weight} onChange={setWeight} inline />
+      <TextField label={`Weight (${weightUnit})`} value={weight} onChange={setWeight} inline />
       <button className="primary" onClick={() => { if (!weight) return; onSave({ date, weight }); setWeight(''); }}>Save weight</button>
     </BaseForm>
   );
@@ -681,11 +893,11 @@ function TextField({ label, value, onChange, inline = false }) {
   );
 }
 
-function NumberField({ label, value, onChange, inline = false }) {
+function NumberField({ label, value, onChange, inline = false, min, step }) {
   return (
     <label className={inline ? 'field inline-field' : 'field'}>
       <span>{label}</span>
-      <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} />
+      <input type="number" min={min} step={step} value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} />
     </label>
   );
 }
