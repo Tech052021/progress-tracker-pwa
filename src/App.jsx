@@ -178,11 +178,13 @@ function App() {
   const [dashTab, setDashTab] = useState('overview');
   const [catTab, setCatTab] = useState('goals');
   const [dashLogOpen, setDashLogOpen] = useState(null);
+  const [catLogOpen, setCatLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => { setCatTab('goals'); }, [tab]);
   useEffect(() => { setDashLogOpen(null); }, [dashTab]);
+  useEffect(() => { setCatLogOpen(null); }, [tab, catTab]);
 
   const addEntry = (bucket, entry) => {
     setData((prev) => ({
@@ -538,16 +540,38 @@ function App() {
                     <h2>Log entry</h2>
                     <p>Add a new {cat.name} entry</p>
                   </div>
-                  {has('pool') && <div className="note-box">{data.reminders.preShotRoutine}</div>}
-                  {has('workout') && <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} durationUnit={durationUnit} />}
-                  {has('weight') && <WeightForm onSave={(entry) => addEntry('weights', entry)} weightUnit={weightUnit} />}
-                  {has('leetcode') && <LeetCodeForm onSave={(entry) => addEntry('leetcode', entry)} />}
-                  {has('pool') && <PoolForm onSave={(entry) => addEntry('pool', entry)} />}
-                  {has('uvm') && <UVMForm onSave={(entry) => addEntry('uvm', entry)} />}
-                  {has('ai') && <AIForm onSave={(entry) => addEntry('ai', entry)} />}
-                  {has('bug') && <BugForm onSave={(entry) => addEntry('bugs', entry)} />}
-                  {has('mentor') && <MentorForm onSave={(entry) => addEntry('mentor', entry)} />}
-                  {!gnames.length && <div className="empty-state">No goals set. Add goals in Settings to enable logging.</div>}
+                  {(() => {
+                    const close = () => setCatLogOpen(null);
+                    const available = [
+                      has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
+                      has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
+                      has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
+                      has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
+                      has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
+                      has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
+                      has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
+                      has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
+                    ].filter(Boolean);
+                    if (available.length === 0) {
+                      return <div className="empty-state">No log templates match this category yet. Add mapped goals in Settings.</div>;
+                    }
+                    const openItem = available.find(a => a.key === catLogOpen);
+                    return (
+                      <>
+                        <div className="log-form-tabs">
+                          {available.map(({ key, label }) => (
+                            <button key={key} type="button"
+                              className={catLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
+                              onClick={() => setCatLogOpen(catLogOpen === key ? null : key)}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {openItem?.key === 'pool' && <div className="note-box">{data.reminders.preShotRoutine}</div>}
+                        {openItem && <div className="log-form-body">{openItem.form}</div>}
+                      </>
+                    );
+                  })()}
                 </section>
               )}
 
