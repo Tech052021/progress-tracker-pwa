@@ -41,6 +41,28 @@ button, input, textarea, select { font: inherit; }
   color: #0369a1;
 }
 
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.brand-logo {
+  width: 64px;
+  height: 64px;
+  display: block;
+  filter: drop-shadow(0 8px 16px rgba(14, 116, 144, 0.2));
+}
+
+.brand-wordmark {
+  font-size: clamp(2rem, 3.5vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  color: #0f1f4a;
+}
+
 h1, h2, h3, h4, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
 .hero-copy { max-width: 58ch; color: #475569; }
@@ -545,6 +567,7 @@ input:focus, textarea:focus, select:focus {
   .hero { grid-template-columns: 1fr; }
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .two-up, .form-grid, .quick-actions-grid { grid-template-columns: 1fr; }
+  .brand-logo { width: 56px; height: 56px; }
 }
 
 @media (max-width: 640px) {
@@ -558,6 +581,9 @@ input:focus, textarea:focus, select:focus {
   .settings-section-tabs .tab {
     width: auto;
   }
+  .brand-lockup { gap: 8px; margin-bottom: 8px; }
+  .brand-logo { width: 48px; height: 48px; }
+  .brand-wordmark { font-size: clamp(1.5rem, 8vw, 2.1rem); }
   .hero-actions { width: 100%; }
   .primary, .secondary, .tab { width: 100%; }
 }

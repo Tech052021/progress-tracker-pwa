@@ -91,6 +91,65 @@ const defaultData = {
   }
 };
 
+function NextStrideLogo() {
+  return (
+    <svg className="brand-logo" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="nsOrbGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#0a183f" />
+          <stop offset="100%" stopColor="#102b73" />
+        </linearGradient>
+        <linearGradient id="nsTrailGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#77ddff" />
+          <stop offset="55%" stopColor="#2ec8f5" />
+          <stop offset="100%" stopColor="#0d7fd3" />
+        </linearGradient>
+      </defs>
+      <circle cx="72" cy="68" r="44" fill="url(#nsOrbGrad)" />
+      <path
+        d="M8 100 C 26 84 40 82 58 86 C 73 89 80 84 95 72"
+        fill="none"
+        stroke="url(#nsTrailGrad)"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      <path
+        d="M36 75 C 50 73 61 68 72 61 C 80 56 86 50 95 41"
+        fill="none"
+        stroke="#f8fbff"
+        strokeWidth="11"
+        strokeLinecap="round"
+      />
+      <path
+        d="M44 56 C 57 54 66 50 75 44 C 81 40 86 35 90 31"
+        fill="none"
+        stroke="#f8fbff"
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M53 40 C 64 38 73 34 80 27"
+        fill="none"
+        stroke="#f8fbff"
+        strokeWidth="8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M84 34 L106 14 L102 40 Z"
+        fill="url(#nsTrailGrad)"
+      />
+      <path
+        d="M31 92 C 40 82 47 76 61 71"
+        fill="none"
+        stroke="url(#nsTrailGrad)"
+        strokeWidth="5"
+        strokeLinecap="round"
+        opacity="0.9"
+      />
+    </svg>
+  );
+}
+
 function normalizeData(raw) {
   const incoming = raw && typeof raw === 'object' ? raw : {};
   const profile = incoming.profile || {};
@@ -354,7 +413,10 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">Production-ready personal tracker</p>
+          <div className="brand-lockup" aria-label="NextStride logo and wordmark">
+            <NextStrideLogo />
+            <span className="brand-wordmark">NextStride</span>
+          </div>
           <h1>Progress Tracker</h1>
           <p className="hero-copy">
             Build momentum across career, health, learning, and practice — even when life is messy.
