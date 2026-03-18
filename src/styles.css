@@ -342,6 +342,24 @@ input:focus, textarea:focus, select:focus {
 }
 .settings-actions { display: flex; justify-content: flex-end; }
 
+.settings-section-tabs {
+  margin-bottom: 12px;
+}
+
+.settings-section-tabs .tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.settings-section-tabs .tab {
+  width: auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
 /* Settings editor: tabs container (horizontal, scrollable if many categories) */
 .settings-tabs {
   display: flex;
@@ -480,6 +498,13 @@ input:focus, textarea:focus, select:focus {
   .app-shell { padding: 14px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-section-tabs .tabs {
+    display: flex;
+    grid-template-columns: none;
+  }
+  .settings-section-tabs .tab {
+    width: auto;
+  }
   .hero-actions { width: 100%; }
   .primary, .secondary, .tab { width: 100%; }
 }

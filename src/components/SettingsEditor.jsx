@@ -124,12 +124,21 @@ function convertWeightGoals(categories, fromUnit, toUnit) {
 }
 
 export default function SettingsEditor({ data, setData, onClose }) {
+  const sectionTabs = [
+    { id: 'profile', label: 'Term goal details' },
+    { id: 'shortGoals', label: 'Short-term goals' },
+    { id: 'actions', label: 'Action items' },
+    { id: 'categories', label: 'Categories' },
+    { id: 'units', label: 'Units' }
+  ];
+
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
     units: migrateUnits(data),
     categories: migrateCategories(data)
   }));
+  const [activeSection, setActiveSection] = useState('profile');
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
   // Add-category dialog state (do not mutate categories until save)
@@ -397,214 +406,239 @@ export default function SettingsEditor({ data, setData, onClose }) {
               </p>
             </div>
 
-            <div className="form-card" style={{ marginBottom: 12 }}>
-              <h3>Header goal details</h3>
-              <div className="goal-planner-grid">
-                <label className="field">
-                  <span>Target</span>
-                  <input value={draft.profile.targetDescriptor} onChange={(e) => updateProfile({ targetDescriptor: e.target.value })} placeholder="Example: Director role at NVIDIA/Google" />
-                </label>
-                <label className="field goal-planner-full">
-                  <span>Long-term goal</span>
-                  <input value={draft.profile.longTermGoal} onChange={(e) => updateProfile({ longTermGoal: e.target.value })} />
-                </label>
-                <label className="field">
-                  <span>Target date</span>
-                  <input type="date" value={draft.profile.targetDate} onChange={(e) => updateProfile({ targetDate: e.target.value })} />
-                </label>
-              </div>
-            </div>
-
-            <div className="form-card" style={{ marginBottom: 12 }}>
-              <div className="card-head">
-                <h3>Units</h3>
-                <p>Choose how values are displayed and entered across the tracker.</p>
-              </div>
-              <div className="goal-planner-grid">
-                <label className="field">
-                  <span>Weight unit</span>
-                  <select value={draft.units.weight} onChange={(e) => updateUnits({ weight: e.target.value })}>
-                    <option value="lb">lb (imperial)</option>
-                    <option value="kg">kg (metric)</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Workout duration unit</span>
-                  <select value={draft.units.duration} onChange={(e) => updateUnits({ duration: e.target.value })}>
-                    <option value="min">minutes</option>
-                    <option value="hr">hours</option>
-                  </select>
-                </label>
-              </div>
-              <p className="helper-text">When weight unit changes, existing weight logs and targets are auto-converted.</p>
-            </div>
-
-            <div className="form-card" style={{ marginBottom: 12 }}>
-              <div className="card-head">
-                <h3>Short-term goals</h3>
-                <p>Define measurable milestones so progress can be tracked.</p>
-              </div>
-              <div className="planner-columns" aria-hidden="true">
-                <span>Milestone</span>
-                <span>Done</span>
-                <span>Target</span>
-                <span>Due date</span>
-                <span>Progress</span>
-                <span>Action</span>
-              </div>
-              {draft.goalPlan.shortTermGoals.map((goal) => {
-                const percent = goal.targetValue > 0 ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100)) : 0;
-                return (
-                  <div className="goal-planner-row" key={goal.id}>
-                    <div className="mobile-field" data-label="Milestone">
-                      <input
-                        value={goal.title}
-                        onChange={(e) => updateShortTermGoal(goal.id, { title: e.target.value })}
-                        placeholder="Milestone title (example: Complete 30 C++ problems)"
-                        aria-label="Short-term milestone title"
-                      />
-                    </div>
-                    <div className="mobile-field" data-label="Done">
-                      <input
-                        type="number"
-                        min="0"
-                        value={goal.currentValue}
-                        onChange={(e) => updateShortTermGoal(goal.id, { currentValue: Number(e.target.value) || 0 })}
-                        placeholder="Done"
-                        aria-label="Completed amount"
-                      />
-                    </div>
-                    <div className="mobile-field" data-label="Target">
-                      <input
-                        type="number"
-                        min="1"
-                        value={goal.targetValue}
-                        onChange={(e) => updateShortTermGoal(goal.id, { targetValue: Number(e.target.value) || 1 })}
-                        placeholder="Target"
-                        aria-label="Target amount"
-                      />
-                    </div>
-                    <div className="mobile-field" data-label="Due date">
-                      <input type="date" value={goal.dueDate} onChange={(e) => updateShortTermGoal(goal.id, { dueDate: e.target.value })} aria-label="Milestone due date" />
-                    </div>
-                    <div className="mobile-field" data-label="Progress">
-                      <span className="goal-progress-chip">{percent}%</span>
-                    </div>
-                    <div className="mobile-field" data-label="Action">
-                      <button className="secondary" onClick={() => removeShortTermGoal(goal.id)}>Delete</button>
-                    </div>
-                  </div>
-                );
-              })}
-              <p className="helper-text">Example: Done `3`, Target `10` means you are 30% complete.</p>
-              <button className="secondary" onClick={addShortTermGoal}>Add short-term goal</button>
-            </div>
-
-            <div className="form-card" style={{ marginBottom: 12 }}>
-              <div className="card-head">
-                <h3>Action items</h3>
-                <p>Break milestones into executable tasks and mark completion.</p>
-              </div>
-              <div className="planner-columns action-columns" aria-hidden="true">
-                <span>Action item</span>
-                <span>Linked milestone</span>
-                <span>Status</span>
-                <span>Due date</span>
-                <span>Action</span>
-              </div>
-              {draft.goalPlan.actionItems.map((item) => (
-                <div className="goal-planner-row action-row" key={item.id}>
-                  <div className="mobile-field" data-label="Action item">
-                    <input value={item.title} onChange={(e) => updateActionItem(item.id, { title: e.target.value })} placeholder="Action item" />
-                  </div>
-                  <div className="mobile-field" data-label="Linked milestone">
-                    <select value={item.goalId} onChange={(e) => updateActionItem(item.id, { goalId: e.target.value })}>
-                      <option value="">Link milestone</option>
-                      {draft.goalPlan.shortTermGoals.map((goal) => (
-                        <option key={goal.id} value={goal.id}>{goal.title || 'Untitled goal'}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mobile-field" data-label="Status">
-                    <select value={item.status} onChange={(e) => updateActionItem(item.id, { status: e.target.value })}>
-                      <option value="todo">To do</option>
-                      <option value="done">Done</option>
-                    </select>
-                  </div>
-                  <div className="mobile-field" data-label="Due date">
-                    <input type="date" value={item.dueDate} onChange={(e) => updateActionItem(item.id, { dueDate: e.target.value })} />
-                  </div>
-                  <div className="mobile-field" data-label="Action">
-                    <button className="secondary" onClick={() => removeActionItem(item.id)}>Delete</button>
-                  </div>
-                </div>
-              ))}
-              <button className="secondary" onClick={addActionItem}>Add action item</button>
-            </div>
-
-            {/* Tabs for categories */}
-            <div className="settings-tabs">
-              <div className="tabs" role="tablist">
-                {draft.categories.map((cat) => (
-                  <button key={cat.id} type="button" className={`tab ${cat.id === activeCatId ? 'active' : ''}`} onClick={() => setActiveCatId(cat.id)}>{cat.name}</button>
+            <div className="settings-section-tabs">
+              <div className="tabs" role="tablist" aria-label="Settings sections">
+                {sectionTabs.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={`tab ${activeSection === section.id ? 'active' : ''}`}
+                    onClick={() => setActiveSection(section.id)}
+                  >
+                    {section.label}
+                  </button>
                 ))}
               </div>
-              <div style={{ marginLeft: 12 }}>
-                <button className="secondary" onClick={addCategory}>Add category</button>
-              </div>
             </div>
 
-            {/* Show only the active category's form */}
-            {activeCat ? (
-              <div className="form-card" key={activeCat.id} style={{ marginBottom: 12 }}>
-                <div className="category-header" style={{ marginBottom: 8 }}>
-                  <input className="category-name" value={activeCat.name} onChange={(e) => updateCategoryName(activeCat.id, e.target.value)} />
-                  <button className="secondary" onClick={() => removeCategory(activeCat.id)}>Delete category</button>
+            {activeSection === 'profile' && (
+              <div className="form-card" style={{ marginBottom: 12 }}>
+                <h3>Term goal details</h3>
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Target</span>
+                    <input value={draft.profile.targetDescriptor} onChange={(e) => updateProfile({ targetDescriptor: e.target.value })} placeholder="Example: Director role at NVIDIA/Google" />
+                  </label>
+                  <label className="field goal-planner-full">
+                    <span>Long-term goal</span>
+                    <input value={draft.profile.longTermGoal} onChange={(e) => updateProfile({ longTermGoal: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span>Target date</span>
+                    <input type="date" value={draft.profile.targetDate} onChange={(e) => updateProfile({ targetDate: e.target.value })} />
+                  </label>
                 </div>
-                <p className="helper-text" style={{ marginTop: 0 }}>Set the unit explicitly for each goal (examples: sessions, pages, kg, hours). Weight goals use {draft.units.weight} by default.</p>
+              </div>
+            )}
 
-                <div className="planner-columns category-columns" aria-hidden="true">
-                  <span>Goal name</span>
-                  <span>Target number</span>
-                  <span>Unit</span>
-                  <span>Frequency</span>
+            {activeSection === 'units' && (
+              <div className="form-card" style={{ marginBottom: 12 }}>
+                <div className="card-head">
+                  <h3>Units</h3>
+                  <p>Choose how values are displayed and entered across the tracker.</p>
+                </div>
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Weight unit</span>
+                    <select value={draft.units.weight} onChange={(e) => updateUnits({ weight: e.target.value })}>
+                      <option value="lb">lb (imperial)</option>
+                      <option value="kg">kg (metric)</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Workout duration unit</span>
+                    <select value={draft.units.duration} onChange={(e) => updateUnits({ duration: e.target.value })}>
+                      <option value="min">minutes</option>
+                      <option value="hr">hours</option>
+                    </select>
+                  </label>
+                </div>
+                <p className="helper-text">When weight unit changes, existing weight logs and targets are auto-converted.</p>
+              </div>
+            )}
+
+            {activeSection === 'shortGoals' && (
+              <div className="form-card" style={{ marginBottom: 12 }}>
+                <div className="card-head">
+                  <h3>Short-term goals</h3>
+                  <p>Define measurable milestones so progress can be tracked.</p>
+                </div>
+                <div className="planner-columns" aria-hidden="true">
+                  <span>Milestone</span>
+                  <span>Done</span>
+                  <span>Target</span>
+                  <span>Due date</span>
+                  <span>Progress</span>
                   <span>Action</span>
                 </div>
-
-                <div className="goals-list">
-                  {activeCat.goals.map((g) => (
-                    <div className="goal-row" key={g.id}>
-                      <div className="mobile-field" data-label="Goal name">
-                        <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} placeholder="Goal name (example: Workout)" aria-label="Category goal name" />
+                {draft.goalPlan.shortTermGoals.map((goal) => {
+                  const percent = goal.targetValue > 0 ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100)) : 0;
+                  return (
+                    <div className="goal-planner-row" key={goal.id}>
+                      <div className="mobile-field" data-label="Milestone">
+                        <input
+                          value={goal.title}
+                          onChange={(e) => updateShortTermGoal(goal.id, { title: e.target.value })}
+                          placeholder="Milestone title (example: Complete 30 C++ problems)"
+                          aria-label="Short-term milestone title"
+                        />
                       </div>
-                      <div className="mobile-field" data-label="Target number">
-                        <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(activeCat.id, g.id, { target: Number(e.target.value) })} placeholder="Target" aria-label="Category goal target" />
+                      <div className="mobile-field" data-label="Done">
+                        <input
+                          type="number"
+                          min="0"
+                          value={goal.currentValue}
+                          onChange={(e) => updateShortTermGoal(goal.id, { currentValue: Number(e.target.value) || 0 })}
+                          placeholder="Done"
+                          aria-label="Completed amount"
+                        />
                       </div>
-                      <div className="mobile-field" data-label="Unit">
-                        <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="sessions / kg / pages" aria-label="Category goal unit" />
+                      <div className="mobile-field" data-label="Target">
+                        <input
+                          type="number"
+                          min="1"
+                          value={goal.targetValue}
+                          onChange={(e) => updateShortTermGoal(goal.id, { targetValue: Number(e.target.value) || 1 })}
+                          placeholder="Target"
+                          aria-label="Target amount"
+                        />
                       </div>
-                      <div className="mobile-field" data-label="Frequency">
-                        <select className="goal-period" value={g.period} onChange={(e) => updateGoal(activeCat.id, g.id, { period: e.target.value })}>
-                          <option value="week">/week</option>
-                          <option value="month">/month</option>
-                          <option value="target">target</option>
-                        </select>
+                      <div className="mobile-field" data-label="Due date">
+                        <input type="date" value={goal.dueDate} onChange={(e) => updateShortTermGoal(goal.id, { dueDate: e.target.value })} aria-label="Milestone due date" />
+                      </div>
+                      <div className="mobile-field" data-label="Progress">
+                        <span className="goal-progress-chip">{percent}%</span>
                       </div>
                       <div className="mobile-field" data-label="Action">
-                        <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
+                        <button className="secondary" onClick={() => removeShortTermGoal(goal.id)}>Delete</button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
+                <p className="helper-text">Example: Done `3`, Target `10` means you are 30% complete.</p>
+                <button className="secondary" onClick={addShortTermGoal}>Add short-term goal</button>
+              </div>
+            )}
 
-                  <div style={{ marginTop: 8 }}>
-                    <button className="secondary" onClick={() => addGoal(activeCat.id)}>Add goal</button>
+            {activeSection === 'actions' && (
+              <div className="form-card" style={{ marginBottom: 12 }}>
+                <div className="card-head">
+                  <h3>Action items</h3>
+                  <p>Break milestones into executable tasks and mark completion.</p>
+                </div>
+                <div className="planner-columns action-columns" aria-hidden="true">
+                  <span>Action item</span>
+                  <span>Linked milestone</span>
+                  <span>Status</span>
+                  <span>Due date</span>
+                  <span>Action</span>
+                </div>
+                {draft.goalPlan.actionItems.map((item) => (
+                  <div className="goal-planner-row action-row" key={item.id}>
+                    <div className="mobile-field" data-label="Action item">
+                      <input value={item.title} onChange={(e) => updateActionItem(item.id, { title: e.target.value })} placeholder="Action item" />
+                    </div>
+                    <div className="mobile-field" data-label="Linked milestone">
+                      <select value={item.goalId} onChange={(e) => updateActionItem(item.id, { goalId: e.target.value })}>
+                        <option value="">Link milestone</option>
+                        {draft.goalPlan.shortTermGoals.map((goal) => (
+                          <option key={goal.id} value={goal.id}>{goal.title || 'Untitled goal'}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mobile-field" data-label="Status">
+                      <select value={item.status} onChange={(e) => updateActionItem(item.id, { status: e.target.value })}>
+                        <option value="todo">To do</option>
+                        <option value="done">Done</option>
+                      </select>
+                    </div>
+                    <div className="mobile-field" data-label="Due date">
+                      <input type="date" value={item.dueDate} onChange={(e) => updateActionItem(item.id, { dueDate: e.target.value })} />
+                    </div>
+                    <div className="mobile-field" data-label="Action">
+                      <button className="secondary" onClick={() => removeActionItem(item.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+                <button className="secondary" onClick={addActionItem}>Add action item</button>
+              </div>
+            )}
+
+            {activeSection === 'categories' && (
+              <>
+                <div className="settings-tabs">
+                  <div className="tabs" role="tablist">
+                    {draft.categories.map((cat) => (
+                      <button key={cat.id} type="button" className={`tab ${cat.id === activeCatId ? 'active' : ''}`} onClick={() => setActiveCatId(cat.id)}>{cat.name}</button>
+                    ))}
+                  </div>
+                  <div style={{ marginLeft: 12 }}>
+                    <button className="secondary" onClick={addCategory}>Add category</button>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                No categories defined. Add one to get started.
-              </div>
+
+                {activeCat ? (
+                  <div className="form-card" key={activeCat.id} style={{ marginBottom: 12 }}>
+                    <div className="category-header" style={{ marginBottom: 8 }}>
+                      <input className="category-name" value={activeCat.name} onChange={(e) => updateCategoryName(activeCat.id, e.target.value)} />
+                      <button className="secondary" onClick={() => removeCategory(activeCat.id)}>Delete category</button>
+                    </div>
+                    <p className="helper-text" style={{ marginTop: 0 }}>Set the unit explicitly for each goal (examples: sessions, pages, kg, hours). Weight goals use {draft.units.weight} by default.</p>
+
+                    <div className="planner-columns category-columns" aria-hidden="true">
+                      <span>Goal name</span>
+                      <span>Target number</span>
+                      <span>Unit</span>
+                      <span>Frequency</span>
+                      <span>Action</span>
+                    </div>
+
+                    <div className="goals-list">
+                      {activeCat.goals.map((g) => (
+                        <div className="goal-row" key={g.id}>
+                          <div className="mobile-field" data-label="Goal name">
+                            <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} placeholder="Goal name (example: Workout)" aria-label="Category goal name" />
+                          </div>
+                          <div className="mobile-field" data-label="Target number">
+                            <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(activeCat.id, g.id, { target: Number(e.target.value) })} placeholder="Target" aria-label="Category goal target" />
+                          </div>
+                          <div className="mobile-field" data-label="Unit">
+                            <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="sessions / kg / pages" aria-label="Category goal unit" />
+                          </div>
+                          <div className="mobile-field" data-label="Frequency">
+                            <select className="goal-period" value={g.period} onChange={(e) => updateGoal(activeCat.id, g.id, { period: e.target.value })}>
+                              <option value="week">/week</option>
+                              <option value="month">/month</option>
+                              <option value="target">target</option>
+                            </select>
+                          </div>
+                          <div className="mobile-field" data-label="Action">
+                            <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div style={{ marginTop: 8 }}>
+                        <button className="secondary" onClick={() => addGoal(activeCat.id)}>Add goal</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    No categories defined. Add one to get started.
+                  </div>
+                )}
+              </>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
