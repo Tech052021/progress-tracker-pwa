@@ -246,6 +246,29 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
   margin-top: 14px;
 }
 
+.log-form-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.log-form-tab {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1.5px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.log-form-tab:hover:not(.active) { background: #f1f5f9; border-color: #94a3b8; }
+.log-form-tab.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.log-form-body {
+  margin-top: 12px;
+}
+
 .chart-wrap {
   border-radius: 20px;
   background: #f8fafc;
@@ -341,6 +364,36 @@ input:focus, textarea:focus, select:focus {
   background: #f8fafc;
 }
 .settings-actions { display: flex; justify-content: flex-end; }
+
+.dash-sub-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+
+.dash-sub-tab {
+  border: 1px solid #e2e8f0;
+  background: rgba(255,255,255,0.7);
+  color: #64748b;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+
+.dash-sub-tab.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.dash-sub-tab:hover:not(.active) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
 
 .settings-section-tabs {
   margin-bottom: 12px;

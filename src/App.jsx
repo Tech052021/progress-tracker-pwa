@@ -175,8 +175,14 @@ function useStoredData() {
 function App() {
   const [data, setData] = useStoredData();
   const [tab, setTab] = useState('dashboard');
+  const [dashTab, setDashTab] = useState('overview');
+  const [catTab, setCatTab] = useState('goals');
+  const [dashLogOpen, setDashLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => { setCatTab('goals'); }, [tab]);
+  useEffect(() => { setDashLogOpen(null); }, [dashTab]);
 
   const addEntry = (bucket, entry) => {
     setData((prev) => ({
@@ -384,197 +390,185 @@ function App() {
 
       {tab === 'dashboard' && (
         <>
-          <section className="card-grid two-up">
-            <section className="card">
-              <div className="card-head">
-                <h2>Goal roadmap</h2>
-                <p>Break down the long-term goal into measurable short-term goals and action items.</p>
-              </div>
-              <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
-              <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
-              <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
-              <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
-            </section>
+          <div className="dash-sub-tabs">
+            {[['overview', 'Overview'], ['progress', 'Progress'], ['log', 'Log']].map(([id, label]) => (
+              <button key={id} type="button" className={dashTab === id ? 'dash-sub-tab active' : 'dash-sub-tab'} onClick={() => setDashTab(id)}>{label}</button>
+            ))}
+          </div>
 
-            <section className="card">
-              <div className="card-head">
-                <h2>Upcoming milestones</h2>
-                <p>Next due goals and actions</p>
-              </div>
-              <RoadmapList goals={shortTermGoals} actions={actionItems} />
-            </section>
-          </section>
-
-          <section className="card-grid two-up">
-            <section className="card">
-              <div className="card-head">
-                <h2>Goal progress</h2>
-                <p>Weekly and monthly scoreboards</p>
-              </div>
-              <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
-              <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
-              <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
-              <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
-              <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
-            </section>
-
-            <section className="card">
-              <div className="card-head">
-                <h2>This month snapshot</h2>
-                <p>Quick pulse on momentum</p>
-              </div>
-              <Snapshot label="Bug analyses" value={monthStats.bugs} />
-              <Snapshot label="Mentor discussions" value={monthStats.mentor} />
-              <Snapshot label="AI experiments" value={monthStats.ai} />
-              <Snapshot label="UVM topics" value={monthStats.uvm} />
-            </section>
-          </section>
-
-          <section className="card-grid two-up">
-            <section className="card">
-              <div className="card-head">
-                <h2>Weight trend</h2>
-                <p>Simple built-in chart ({weightUnit})</p>
-              </div>
-              <MiniLineChart data={weightSeries} />
-            </section>
-
-            <section className="card">
-              <div className="card-head">
-                <h2>Daily reminder</h2>
-                <p>Your minimum successful day</p>
-              </div>
-              <div className="note-box">{data.reminders.todayMustWin}</div>
-              <div className="quick-actions-grid">
-                <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} compact durationUnit={durationUnit} />
-                <WeightForm onSave={(entry) => addEntry('weights', entry)} compact weightUnit={weightUnit} />
-                <LeetCodeForm onSave={(entry) => addEntry('leetcode', entry)} compact />
-                <PoolForm onSave={(entry) => addEntry('pool', entry)} compact />
-              </div>
-            </section>
-          </section>
-        </>
-      )}
-
-      {/* Dynamic category view */}
-      {tab !== 'dashboard' && !showSettings && (
-        (() => {
-          const cat = normalizedCategories.find(c => c.name === tab);
-          if (!cat) return null;
-          return (
+          {dashTab === 'overview' && (
             <section className="card-grid two-up">
-              <section className="card stack-gap">
+              <section className="card">
                 <div className="card-head">
-                  <h2>{cat.name}</h2>
-                  <p>Editable goals and recent entries for {cat.name}</p>
+                  <h2>Goal roadmap</h2>
+                  <p>Break down the long-term goal into measurable short-term goals and action items.</p>
                 </div>
-                {cat.goals.map((g) => (
-                  <div key={g.id} style={{ marginBottom: 12 }}>
-                    <ProgressRow label={g.name} value={goalCount(g)} target={g.target} unit={g.unit} />
-                  </div>
-                ))}
+                <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
+                <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
+                <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
+                <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
               </section>
 
               <section className="card">
                 <div className="card-head">
-                  <h2>Recent entries</h2>
-                  <p>Newest activity relevant to {cat.name}</p>
+                  <h2>Upcoming milestones</h2>
+                  <p>Next due goals and actions</p>
                 </div>
-                <EntryList
-                  items={mergeEntries(cat.goals.map((g) => {
-                    const bucket = mapGoalToBucket(g.name);
-                    return [bucket || 'unknown', data.entries[bucket] || [], g.name];
-                  }))}
-                  onDelete={removeEntry}
-                />
+                <RoadmapList goals={shortTermGoals} actions={actionItems} />
               </section>
             </section>
+          )}
+
+          {dashTab === 'progress' && (
+            <section className="card-grid two-up">
+              <section className="card">
+                <div className="card-head">
+                  <h2>Goal progress</h2>
+                  <p>Weekly and monthly scoreboards</p>
+                </div>
+                <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
+                <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
+                <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
+                <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
+                <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>This month snapshot</h2>
+                  <p>Quick pulse on momentum</p>
+                </div>
+                <Snapshot label="Bug analyses" value={monthStats.bugs} />
+                <Snapshot label="Mentor discussions" value={monthStats.mentor} />
+                <Snapshot label="AI experiments" value={monthStats.ai} />
+                <Snapshot label="UVM topics" value={monthStats.uvm} />
+              </section>
+            </section>
+          )}
+
+          {dashTab === 'log' && (
+            <section className="card-grid two-up">
+              <section className="card">
+                <div className="card-head">
+                  <h2>Weight trend</h2>
+                  <p>Simple built-in chart ({weightUnit})</p>
+                </div>
+                <MiniLineChart data={weightSeries} />
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>Daily reminder</h2>
+                  <p>Your minimum successful day</p>
+                </div>
+                <div className="note-box">{data.reminders.todayMustWin}</div>
+                {(() => {
+                  const allNames = normalizedCategories.flatMap(c => c.goals.map(g => g.name.toLowerCase()));
+                  const has = (kw) => allNames.some(n => n.includes(kw));
+                  const close = () => setDashLogOpen(null);
+                  const available = [
+                    has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
+                    has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
+                    has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
+                    has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
+                    has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
+                    has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
+                    has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
+                    has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
+                  ].filter(Boolean);
+                  if (available.length === 0) return <div className="empty-state">No goals configured. Add goals in Settings.</div>;
+                  const openItem = available.find(a => a.key === dashLogOpen);
+                  return (
+                    <>
+                      <div className="log-form-tabs">
+                        {available.map(({ key, label }) => (
+                          <button key={key} type="button"
+                            className={dashLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
+                            onClick={() => setDashLogOpen(dashLogOpen === key ? null : key)}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {openItem && <div className="log-form-body">{openItem.form}</div>}
+                    </>
+                  );
+                })()}
+              </section>
+            </section>
+          )}
+        </>
+      )}
+
+      {/* Dynamic category view — works for any category, including user-added ones */}
+      {tab !== 'dashboard' && !showSettings && (
+        (() => {
+          const cat = normalizedCategories.find(c => c.name === tab);
+          if (!cat) return null;
+          const gnames = cat.goals.map(g => g.name.toLowerCase());
+          const has = (kw) => gnames.some(n => n.includes(kw));
+          return (
+            <>
+              <div className="dash-sub-tabs">
+                {[['goals', 'Goals'], ['log', 'Log'], ['history', 'History']].map(([id, label]) => (
+                  <button key={id} type="button"
+                    className={catTab === id ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                    onClick={() => setCatTab(id)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {catTab === 'goals' && (
+                <section className="card">
+                  <div className="card-head">
+                    <h2>{cat.name}</h2>
+                    <p>Goal progress for {cat.name}</p>
+                  </div>
+                  {cat.goals.length ? cat.goals.map((g) => (
+                    <div key={g.id} style={{ marginBottom: 12 }}>
+                      <ProgressRow label={g.name} value={goalCount(g)} target={g.target} unit={g.unit} />
+                    </div>
+                  )) : <div className="empty-state">No goals set. Add goals in Settings.</div>}
+                </section>
+              )}
+
+              {catTab === 'log' && (
+                <section className="card stack-gap">
+                  <div className="card-head">
+                    <h2>Log entry</h2>
+                    <p>Add a new {cat.name} entry</p>
+                  </div>
+                  {has('pool') && <div className="note-box">{data.reminders.preShotRoutine}</div>}
+                  {has('workout') && <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} durationUnit={durationUnit} />}
+                  {has('weight') && <WeightForm onSave={(entry) => addEntry('weights', entry)} weightUnit={weightUnit} />}
+                  {has('leetcode') && <LeetCodeForm onSave={(entry) => addEntry('leetcode', entry)} />}
+                  {has('pool') && <PoolForm onSave={(entry) => addEntry('pool', entry)} />}
+                  {has('uvm') && <UVMForm onSave={(entry) => addEntry('uvm', entry)} />}
+                  {has('ai') && <AIForm onSave={(entry) => addEntry('ai', entry)} />}
+                  {has('bug') && <BugForm onSave={(entry) => addEntry('bugs', entry)} />}
+                  {has('mentor') && <MentorForm onSave={(entry) => addEntry('mentor', entry)} />}
+                  {!gnames.length && <div className="empty-state">No goals set. Add goals in Settings to enable logging.</div>}
+                </section>
+              )}
+
+              {catTab === 'history' && (
+                <section className="card">
+                  <div className="card-head">
+                    <h2>History</h2>
+                    <p>Recent entries for {cat.name}</p>
+                  </div>
+                  <EntryList
+                    items={mergeEntries(cat.goals.map((g) => {
+                      const bucket = mapGoalToBucket(g.name);
+                      return [bucket || 'unknown', data.entries[bucket] || [], g.name];
+                    }))}
+                    onDelete={removeEntry}
+                  />
+                </section>
+              )}
+            </>
           );
         })()
-      )}
-
-      {tab === 'career' && (
-        <section className="card-grid two-up">
-          <section className="card stack-gap">
-            <div className="card-head">
-              <h2>Log career progress</h2>
-              <p>Build the NVIDIA / Google path one entry at a time</p>
-            </div>
-            <UVMForm onSave={(entry) => addEntry('uvm', entry)} />
-            <AIForm onSave={(entry) => addEntry('ai', entry)} />
-            <BugForm onSave={(entry) => addEntry('bugs', entry)} />
-            <MentorForm onSave={(entry) => addEntry('mentor', entry)} />
-            <WeeklyNoteForm onSave={(entry) => addEntry('weeklyNotes', entry)} />
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Recent career entries</h2>
-              <p>Newest first</p>
-            </div>
-            <EntryList
-              items={mergeEntries([
-                ['uvm', data.entries.uvm, 'UVM'],
-                ['ai', data.entries.ai, 'AI'],
-                ['bugs', data.entries.bugs, 'Bug'],
-                ['mentor', data.entries.mentor, 'Mentor'],
-                ['weeklyNotes', data.entries.weeklyNotes, 'Note']
-              ])}
-              onDelete={removeEntry}
-            />
-          </section>
-        </section>
-      )}
-
-      {tab === 'health' && (
-        <section className="card-grid two-up">
-          <section className="card stack-gap">
-            <div className="card-head">
-              <h2>Health logs</h2>
-              <p>Track movement and body trend</p>
-            </div>
-            <WorkoutForm onSave={(entry) => addEntry('workouts', entry)} durationUnit={durationUnit} />
-            <WeightForm onSave={(entry) => addEntry('weights', entry)} weightUnit={weightUnit} />
-          </section>
-          <section className="card">
-            <div className="card-head">
-              <h2>Recent health entries</h2>
-              <p>Workouts and weight</p>
-            </div>
-            <EntryList
-              items={mergeEntries([
-                ['workouts', data.entries.workouts.map((x) => ({ ...x, title: `${x.kind} · ${formatDurationValue(x.duration)}`, details: x.notes || '' })), 'Workout'],
-                ['weights', data.entries.weights.map((x) => ({ ...x, title: `${x.weight} ${weightUnit}`, details: '' })), 'Weight']
-              ])}
-              onDelete={removeEntry}
-            />
-          </section>
-        </section>
-      )}
-
-      {tab === 'pool' && (
-        <section className="card-grid two-up">
-          <section className="card stack-gap">
-            <div className="card-head">
-              <h2>Pool tracking</h2>
-              <p>Practice consistency beats random sessions</p>
-            </div>
-            <div className="note-box">{data.reminders.preShotRoutine}</div>
-            <PoolForm onSave={(entry) => addEntry('pool', entry)} />
-          </section>
-          <section className="card">
-            <div className="card-head">
-              <h2>Recent pool sessions</h2>
-              <p>Practice and league notes</p>
-            </div>
-            <EntryList
-              items={mergeEntries([
-                ['pool', data.entries.pool.map((x) => ({ ...x, title: `${x.mode} · ${x.drill}`, details: `Success: ${x.success}${x.notes ? ` · ${x.notes}` : ''}` })), 'Pool']
-              ])}
-              onDelete={removeEntry}
-            />
-          </section>
-        </section>
       )}
 
       {showSettings && (
