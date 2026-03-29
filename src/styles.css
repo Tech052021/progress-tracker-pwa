@@ -387,6 +387,76 @@ input:focus, textarea:focus, select:focus {
 }
 .settings-actions { display: flex; justify-content: flex-end; }
 
+.momentum-card {
+  background: linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(13,42,93,0.98) 100%);
+  color: #f8fafc;
+  border: 1px solid rgba(125, 211, 252, 0.3);
+}
+
+.momentum-card .card-head p,
+.momentum-card .snapshot-row,
+.momentum-card .snapshot-row span,
+.momentum-message,
+.momentum-kicker {
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.momentum-card .snapshot-row {
+  border-color: rgba(125, 211, 252, 0.26);
+}
+
+.momentum-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.momentum-kicker {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.momentum-value {
+  margin: 4px 0 0;
+  font-size: clamp(1.9rem, 4vw, 2.5rem);
+}
+
+.streak-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  color: #bae6fd;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.streak-pill.hot {
+  border-color: rgba(74, 222, 128, 0.85);
+  color: #bbf7d0;
+  background: rgba(21, 128, 61, 0.25);
+}
+
+.momentum-card .progress-track {
+  margin-top: 8px;
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.momentum-card .progress-fill {
+  background: linear-gradient(90deg, #34d399, #22d3ee 60%, #38bdf8);
+}
+
+.momentum-message {
+  margin: 10px 0 12px;
+  font-size: 14px;
+}
+
 .dash-sub-tabs {
   display: flex;
   gap: 8px;
@@ -423,10 +493,11 @@ input:focus, textarea:focus, select:focus {
 
 .settings-section-tabs .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0;
-  overflow-x: auto;
-  padding-bottom: 4px;
+  overflow-x: visible;
+  padding-bottom: 0;
 }
 
 .settings-section-tabs .tab {

@@ -300,6 +300,14 @@ function App() {
     mentor: data.entries.mentor.filter((x) => x.date.startsWith(currentMonth)).length
   };
 
+  const today = ISO_DATE();
+  const dailyTarget = 3;
+  const todayActivityCount = countEntriesOnDate(data.entries, today);
+  const activityStreakDays = getActivityStreakDays(data.entries, today);
+  const weeklyActivityCount = getRecentActivityCount(data.entries, today, 7);
+  const todayProgressPct = Math.min(100, Math.round((todayActivityCount / dailyTarget) * 100));
+  const remainingToday = Math.max(0, dailyTarget - todayActivityCount);
+
   const shortTermGoals = data.goalPlan?.shortTermGoals || [];
   const actionItems = data.goalPlan?.actionItems || [];
   const completedActionItems = actionItems.filter((item) => item.status === 'done').length;
@@ -350,6 +358,40 @@ function App() {
   }, [data.settings, weightUnit]);
 
   const normalizedCategories = useMemo(() => normalizeCategories(categories, weightUnit), [categories, weightUnit]);
+
+  const focusGoals = useMemo(() => {
+    return normalizedCategories
+      .flatMap((category) =>
+        (category.goals || []).map((goal) => {
+          const current = goalCount(goal);
+          const target = Number(goal.target || 0);
+          return {
+            id: goal.id,
+            name: goal.name,
+            category: category.name,
+            period: goal.period,
+            unit: goal.unit,
+            current,
+            target,
+            remaining: Math.max(0, target - current)
+          };
+        })
+      )
+      .filter((goal) => goal.period !== 'target' && goal.target > 0)
+      .sort((a, b) => {
+        const aDone = a.remaining <= 0 ? 1 : 0;
+        const bDone = b.remaining <= 0 ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return a.remaining - b.remaining;
+      })
+      .slice(0, 3);
+  }, [normalizedCategories, data.entries, currentWeek, currentMonth]);
+
+  const momentumMessage = todayActivityCount >= dailyTarget
+    ? 'You hit today\'s target. Keep the streak alive tomorrow.'
+    : remainingToday === 1
+      ? 'One more action and today is a win.'
+      : `${remainingToday} actions left to complete today.`;
 
   const formatGoalUnit = (goal) => {
     const unit = String(goal.unit || '').trim();
@@ -425,6 +467,7 @@ function App() {
             <span className="badge">Goal: {data.profile.longTermGoal}</span>
             <span className="badge">Target: {data.profile.targetDescriptor || 'Set in settings'}</span>
             <span className="badge">Target date: {data.profile.targetDate || 'Set in settings'}</span>
+            <span className="badge">Streak: {activityStreakDays} day{activityStreakDays === 1 ? '' : 's'}</span>
             <span className="badge">{currentWeek}</span>
           </div>
         </div>
@@ -462,6 +505,26 @@ function App() {
 
           {dashTab === 'overview' && (
             <section className="card-grid two-up">
+              <section className="card momentum-card">
+                <div className="card-head">
+                  <h2>Today momentum</h2>
+                  <p>Clear daily target and streak to keep you consistent.</p>
+                </div>
+                <div className="momentum-header">
+                  <div>
+                    <p className="momentum-kicker">Daily target</p>
+                    <h3 className="momentum-value">{todayActivityCount}/{dailyTarget}</h3>
+                  </div>
+                  <span className={todayActivityCount >= dailyTarget ? 'streak-pill hot' : 'streak-pill'}>
+                    {activityStreakDays} day streak
+                  </span>
+                </div>
+                <div className="progress-track"><div className="progress-fill" style={{ width: `${todayProgressPct}%` }} /></div>
+                <p className="momentum-message">{momentumMessage}</p>
+                <div className="snapshot-row"><span>Last 7 days activity</span><strong>{weeklyActivityCount} logs</strong></div>
+                <button className="primary" onClick={() => setDashTab('log')}>Log now</button>
+              </section>
+
               <section className="card">
                 <div className="card-head">
                   <h2>Goal roadmap</h2>
@@ -479,6 +542,32 @@ function App() {
                   <p>Next due goals and actions</p>
                 </div>
                 <RoadmapList goals={shortTermGoals} actions={actionItems} />
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>Focus next</h2>
+                  <p>Top priorities chosen from your active goals.</p>
+                </div>
+                {focusGoals.length ? (
+                  <div className="entry-list">
+                    {focusGoals.map((goal) => (
+                      <article className="entry-card" key={goal.id}>
+                        <div className="entry-top">
+                          <span className="chip">{goal.category}</span>
+                          <span className="entry-date">{goal.period === 'month' ? 'This month' : 'This week'}</span>
+                        </div>
+                        <h4>{goal.name}</h4>
+                        <p>
+                          {goal.current}/{goal.target} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}
+                          {goal.remaining > 0 ? ` · ${goal.remaining} left` : ' · complete'}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">Add goals in Settings to get personalized priorities.</div>
+                )}
               </section>
             </section>
           )}
@@ -1000,6 +1089,50 @@ function SelectField({ value, onChange, options }) {
       </select>
     </label>
   );
+}
+
+function countEntriesOnDate(entriesByBucket, dateString) {
+  if (!entriesByBucket) return 0;
+  return Object.values(entriesByBucket).reduce((sum, list) => {
+    if (!Array.isArray(list)) return sum;
+    return sum + list.filter((item) => item?.date === dateString).length;
+  }, 0);
+}
+
+function getRecentActivityCount(entriesByBucket, anchorDateString, days = 7) {
+  if (!entriesByBucket) return 0;
+  const anchor = new Date(`${anchorDateString}T00:00:00`);
+  const dates = new Set();
+  for (let i = 0; i < days; i += 1) {
+    const d = new Date(anchor);
+    d.setDate(anchor.getDate() - i);
+    dates.add(d.toISOString().slice(0, 10));
+  }
+  return Object.values(entriesByBucket).reduce((sum, list) => {
+    if (!Array.isArray(list)) return sum;
+    return sum + list.filter((item) => item?.date && dates.has(item.date)).length;
+  }, 0);
+}
+
+function getActivityStreakDays(entriesByBucket, anchorDateString = ISO_DATE()) {
+  if (!entriesByBucket) return 0;
+  const activeDates = new Set();
+  Object.values(entriesByBucket).forEach((list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((item) => {
+      if (item?.date) activeDates.add(item.date);
+    });
+  });
+
+  let streak = 0;
+  const cursor = new Date(`${anchorDateString}T00:00:00`);
+  while (true) {
+    const key = cursor.toISOString().slice(0, 10);
+    if (!activeDates.has(key)) break;
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
 }
 
 function capitalize(str) {

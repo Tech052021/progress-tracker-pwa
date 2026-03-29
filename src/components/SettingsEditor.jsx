@@ -125,10 +125,10 @@ function convertWeightGoals(categories, fromUnit, toUnit) {
 
 export default function SettingsEditor({ data, setData, onClose }) {
   const sectionTabs = [
-    { id: 'profile', label: 'Term goal details' },
+    { id: 'profile', label: 'Long-term goal' },
     { id: 'shortGoals', label: 'Short-term goals' },
     { id: 'actions', label: 'Action items' },
-    { id: 'categories', label: 'Categories' },
+    { id: 'categories', label: 'Categories and goals' },
     { id: 'units', label: 'Units' }
   ];
 
@@ -407,6 +407,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
             </div>
 
             <div className="settings-section-tabs">
+              <p className="helper-text" style={{ marginTop: 0 }}>
+                Use these tabs to edit everything: long-term plan, short-term milestones, action items, categories/goals, and units.
+              </p>
               <div className="tabs" role="tablist" aria-label="Settings sections">
                 {sectionTabs.map((section) => (
                   <button
