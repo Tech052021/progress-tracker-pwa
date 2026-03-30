@@ -134,6 +134,10 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
   overflow: auto;
 }
 
+.modal-content-submodal-open {
+  overflow: hidden;
+}
+
 .submodal-backdrop {
   position: fixed;
   inset: 0;
@@ -142,7 +146,9 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
   align-items: center;
   justify-content: center;
   z-index: 80;
-  padding: 16px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: 24px 16px;
 }
 
 .submodal-content {
@@ -153,13 +159,58 @@ h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3rem); }
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(2, 6, 23, 0.18);
   padding: 16px;
+  margin: 0 auto;
+}
+
+/* Planner modal: active popup owns scrolling; background stays locked */
+.planner-submodal {
+  max-width: 720px;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: block;
+  padding: 0;
+}
+
+.planner-submodal-header {
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.planner-submodal-body {
+  padding: 16px 20px 12px;
 }
 
 .submodal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 16px;
+}
+
+.planner-submodal-actions {
+  margin-top: 0;
+  padding-top: 16px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 16px;
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+/* Remove generic submodal padding for planner variant so it can fully fit viewport box */
+.submodal-content.planner-submodal {
+  padding: 0;
+}
+
+/* hide native number-input spinners app-wide */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 
@@ -375,6 +426,41 @@ input:focus, textarea:focus, select:focus {
 .goal-unit { padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; }
 .goal-period { padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; }
 .goal-row .secondary { margin-left: 0; width: 100%; }
+.quick-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.quick-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.quick-chip:hover {
+  background: #eef2ff;
+  border-color: #94a3b8;
+}
+
+.quick-chip.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.goal-row-hint {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
 .entry-top {
   display: flex;
   justify-content: space-between;
@@ -392,7 +478,16 @@ input:focus, textarea:focus, select:focus {
   border: 1px dashed #cbd5e1;
   background: #f8fafc;
 }
-.settings-actions { display: flex; justify-content: flex-end; }
+.settings-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.settings-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: linear-gradient(180deg, rgba(255,255,255,0.25) 0%, #ffffff 30%);
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
 
 .momentum-card {
   position: relative;
@@ -722,6 +817,11 @@ input:focus, textarea:focus, select:focus {
     width: 100%;
   }
 
+  .quick-chip {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
   .goal-planner-grid {
     grid-template-columns: 1fr;
   }
@@ -745,6 +845,14 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 640px) {
   .app-shell { padding: 14px; }
   .metrics-grid { grid-template-columns: 1fr; }
+  .modal-backdrop { padding: 12px; }
+  .modal-content { max-height: 94vh; }
+  .submodal-backdrop { padding: 12px; }
+  .submodal-content { padding: 14px; }
+  .planner-submodal { max-height: 100%; }
+  .planner-submodal-header { padding: 14px 14px 10px; }
+  .planner-submodal-body { padding: 12px 14px 10px; }
+  .planner-submodal-actions { padding: 10px 14px 14px; }
   .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-section-tabs .tabs {
     display: flex;

@@ -1,4 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  applyGeneratedDraft,
+  buildPlanBlueprint,
+  parseNumericInput,
+  stripDraftFields,
+  toISODateAfter,
+} from './settingsPlanner';
+import useLayeredModalSizing from './useLayeredModalSizing';
 
 const LB_PER_KG = 2.20462;
 
@@ -18,6 +26,75 @@ function inferGoalUnit(goalName, weightUnit = 'lb') {
 function normalizeGoalPeriod(period) {
   const normalized = String(period || '').trim().toLowerCase().replace(/^\//, '');
   return normalized || 'week';
+}
+
+function getSuggestedUnits(goal, weightUnit = 'lb') {
+  const name = String(goal?.name || '').toLowerCase();
+  const current = String(goal?.unit || '').trim();
+  let options = ['count'];
+
+  if (name.includes('weight')) {
+    options = [weightUnit, weightUnit === 'lb' ? 'kg' : 'lb'];
+  } else if (name.includes('protein')) {
+    options = ['g'];
+  } else if (name.includes('water')) {
+    options = ['liters', 'ml'];
+  } else if (name.includes('sleep')) {
+    options = ['hours'];
+  } else if (/(cardio|strength|workout|session|practice)/.test(name)) {
+    options = ['sessions'];
+  } else if (/(read|book|page)/.test(name)) {
+    options = ['pages'];
+  }
+
+  return [...new Set([...options, current].filter(Boolean))];
+}
+
+function getSuggestedPeriods(goal) {
+  const name = String(goal?.name || '').toLowerCase();
+  const current = normalizeGoalPeriod(goal?.period);
+
+  let options = ['week', 'day', 'month', 'target'];
+  if (name.includes('weight')) {
+    options = ['target', 'week'];
+  } else if (name.includes('protein') || name.includes('water') || name.includes('sleep')) {
+    options = ['day', 'week'];
+  }
+
+  return [...new Set([...options, current])];
+}
+
+function getGoalHintText(goal) {
+  const name = String(goal?.name || '').toLowerCase();
+  const target = Number(goal?.target);
+  const unit = String(goal?.unit || '').trim();
+
+  if (name.includes('protein')) {
+    if (Number.isFinite(target) && target > 0) {
+      return `Daily target: ${target} ${unit || 'g'}. Log what you actually consume each day.`;
+    }
+    return 'Set a daily protein target in grams so progress is clear.';
+  }
+
+  if (name.includes('water')) {
+    if (Number.isFinite(target) && target > 0) {
+      return `Daily hydration target: ${target} ${unit || 'liters'}.`; 
+    }
+    return 'Set a daily water target to track hydration consistently.';
+  }
+
+  if (name.includes('sleep')) {
+    if (Number.isFinite(target) && target > 0) {
+      return `Daily sleep target: ${target} ${unit || 'hours'} each night.`;
+    }
+    return 'Set your ideal sleep hours per day.';
+  }
+
+  if (name.includes('weight') && normalizeGoalPeriod(goal?.period) === 'target') {
+    return 'This is an outcome goal. Update progress whenever your measured weight changes.';
+  }
+
+  return '';
 }
 
 function createDefaultCategories() {
@@ -130,13 +207,37 @@ function convertWeightGoals(categories, fromUnit, toUnit) {
   }));
 }
 
+function createDefaultPlanIntake() {
+  return {
+    planType: 'general',
+    categoryName: '',
+    goalText: '',
+    currentValue: '',
+    targetValue: '',
+    targetUnit: '',
+    targetDate: toISODateAfter(84),
+    availableHoursPerWeek: 5,
+    constraints: '',
+    useSuggestedTimeline: true
+  };
+}
+
+function getWeeksUntilTargetDate(targetDate) {
+  if (!targetDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${targetDate}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const diffMs = target - today;
+  const diffDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  return Math.max(2, Math.ceil(diffDays / 7));
+}
+
+
 export default function SettingsEditor({ data, setData, onClose }) {
   const sectionTabs = [
     { id: 'profile', label: 'Long-term goal' },
-    { id: 'shortGoals', label: 'Short-term goals' },
-    { id: 'actions', label: 'Action items' },
-    { id: 'categories', label: 'Categories and goals' },
-    { id: 'units', label: 'Units' }
+    { id: 'categories', label: 'Categories and goals' }
   ];
 
   const [draft, setDraft] = useState(() => ({
@@ -151,7 +252,75 @@ export default function SettingsEditor({ data, setData, onClose }) {
   // Add-category dialog state (do not mutate categories until save)
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [pendingCategoryName, setPendingCategoryName] = useState('');
-  // Template selector state
+  const [showPlanIntakeDialog, setShowPlanIntakeDialog] = useState(false);
+  const [planIntake, setPlanIntake] = useState(() => createDefaultPlanIntake());
+  const [planIntakeMode, setPlanIntakeMode] = useState('append');
+  const [lastGeneratedDraft, setLastGeneratedDraft] = useState(null);
+  const settingsModalRef = useRef(null);
+
+  const planFeedback = useMemo(() => {
+    const currentValue = parseNumericInput(planIntake.currentValue);
+    const targetValue = parseNumericInput(planIntake.targetValue);
+    const weeksFromDate = getWeeksUntilTargetDate(planIntake.targetDate);
+    const timeframeWeeks = weeksFromDate || Math.max(1, Number(planIntake.timeframeWeeks) || 12);
+    const unit = String(planIntake.targetUnit || '').toLowerCase();
+    const lowerGoal = String(planIntake.goalText || '').toLowerCase();
+    const isWeightPlan = planIntake.planType === 'weight' || /(weight|lose|fat)/.test(lowerGoal) || unit === 'lb' || unit === 'lbs' || unit === 'kg';
+
+    if (isWeightPlan && currentValue !== null && targetValue !== null && currentValue > targetValue) {
+      const delta = currentValue - targetValue;
+      const perWeek = delta / timeframeWeeks;
+      const maxPerWeek = unit === 'kg' ? 0.9 : 2;
+      const safePerWeek = unit === 'kg' ? 0.7 : 1.5;
+      const recommendedWeeks = Math.max(timeframeWeeks, Math.ceil(delta / safePerWeek));
+      const aggressive = perWeek > maxPerWeek;
+      return {
+        isWeightPlan: true,
+        isAggressive: aggressive,
+        recommendedWeeks,
+        effectiveTimeframeWeeks: aggressive && planIntake.useSuggestedTimeline ? recommendedWeeks : timeframeWeeks,
+        message: aggressive
+          ? `This target date looks very aggressive. A steadier plan would be about ${recommendedWeeks} weeks so progress feels easier to sustain.`
+          : 'This looks like a realistic pace if you stay consistent.'
+      };
+    }
+
+    if ((planIntake.planType === 'study' || /a\+|grade|exam|class|course/.test(lowerGoal)) && Number(planIntake.availableHoursPerWeek || 0) < 4) {
+      return {
+        isWeightPlan: false,
+        isAggressive: false,
+        recommendedWeeks: timeframeWeeks,
+        effectiveTimeframeWeeks: timeframeWeeks,
+        message: 'This may still work, but consider reserving at least 4 focused hours each week for stronger results.'
+      };
+    }
+
+    return {
+      isWeightPlan: false,
+      isAggressive: false,
+      recommendedWeeks: timeframeWeeks,
+      effectiveTimeframeWeeks: timeframeWeeks,
+      message: 'We will create a draft plan you can adjust before saving.'
+    };
+  }, [planIntake]);
+
+  const timelineSummary = useMemo(() => {
+    const weeks = planFeedback.effectiveTimeframeWeeks;
+    if (!weeks || !Number.isFinite(weeks)) return '';
+    if (weeks < 5) return `${weeks} weeks`;
+    const months = Math.max(1, Math.round((weeks / 52) * 12));
+    if (months < 12) return `${weeks} weeks (about ${months} month${months > 1 ? 's' : ''})`;
+    const years = Math.max(1, Math.round(months / 12));
+    return `${weeks} weeks (about ${years} year${years > 1 ? 's' : ''})`;
+  }, [planFeedback.effectiveTimeframeWeeks]);
+
+  const planPreview = useMemo(() => {
+    if (!String(planIntake.goalText || '').trim()) return null;
+    return buildPlanBlueprint(
+      { ...planIntake, effectiveTimeframeWeeks: planFeedback.effectiveTimeframeWeeks },
+      draft.units.weight
+    );
+  }, [draft.units.weight, planFeedback.effectiveTimeframeWeeks, planIntake]);
 
   // Active category shown in the editor (tabs)
   const [activeCatId, setActiveCatId] = useState(() => {
@@ -169,6 +338,11 @@ export default function SettingsEditor({ data, setData, onClose }) {
       setActiveCatId(draft.categories[0].id);
     }
   }, [draft.categories, activeCatId]);
+
+  const { plannerSubmodalStyle, addCategorySubmodalStyle } = useLayeredModalSizing(
+    settingsModalRef,
+    showAddCategoryDialog || showPlanIntakeDialog
+  );
 
   const updateCategoryName = (catId, name) => {
     setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, name } : c) }));
@@ -203,6 +377,43 @@ export default function SettingsEditor({ data, setData, onClose }) {
     setPendingCategoryName('');
   };
 
+  const openPlanIntake = (mode = 'append') => {
+    setPlanIntakeMode(mode);
+    if (mode === 'replace' && lastGeneratedDraft?.intake) {
+      setPlanIntake({ ...createDefaultPlanIntake(), ...lastGeneratedDraft.intake });
+    } else {
+      setPlanIntake(createDefaultPlanIntake());
+    }
+    setShowPlanIntakeDialog(true);
+  };
+
+  const closePlanIntake = () => {
+    setShowPlanIntakeDialog(false);
+  };
+
+  const generatePlanFromIntake = (mode = 'append') => {
+    if (!String(planIntake.goalText || '').trim()) {
+      alert('Please describe what you want to achieve.');
+      return;
+    }
+
+    const blueprint = buildPlanBlueprint({ ...planIntake, effectiveTimeframeWeeks: planFeedback.effectiveTimeframeWeeks }, draft.units.weight);
+    const draftId = mode === 'replace' && lastGeneratedDraft?.draftId ? lastGeneratedDraft.draftId : uid();
+    let nextActiveId = null;
+
+    setDraft((d) => {
+      const result = applyGeneratedDraft({ draft: d, blueprint, draftId, mode, makeId: uid });
+      nextActiveId = result.nextActiveId;
+      return result.nextDraft;
+    });
+
+    if (nextActiveId) setActiveCatId(nextActiveId);
+    setActiveSection('categories');
+    setLastGeneratedDraft({ draftId, intake: { ...planIntake }, categoryName: blueprint.categoryName });
+    closePlanIntake();
+    alert(mode === 'replace' ? 'Draft plan regenerated. Review and edit before clicking Apply.' : 'Draft plan generated. Review and edit before clicking Apply.');
+  };
+
   const removeCategory = (catId) => {
     if (!window.confirm('Delete this category?')) return;
     setDraft((d) => {
@@ -235,82 +446,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
     setDraft((d) => ({ ...d, profile: { ...d.profile, ...patch } }));
   };
 
-  const updateUnits = (patch) => {
-    setDraft((d) => {
-      const nextUnits = { ...d.units, ...patch };
-      let nextCategories = d.categories;
-
-      if (patch.weight && patch.weight !== d.units.weight) {
-        nextCategories = convertWeightGoals(d.categories, d.units.weight, patch.weight);
-      }
-
-      return { ...d, units: nextUnits, categories: nextCategories };
-    });
-  };
-
-  const addShortTermGoal = () => {
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        shortTermGoals: [...d.goalPlan.shortTermGoals, { id: uid(), title: '', targetValue: 1, currentValue: 0, dueDate: '' }]
-      }
-    }));
-  };
-
-  const updateShortTermGoal = (goalId, patch) => {
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        shortTermGoals: d.goalPlan.shortTermGoals.map((goal) => goal.id === goalId ? { ...goal, ...patch } : goal)
-      }
-    }));
-  };
-
-  const removeShortTermGoal = (goalId) => {
-    if (!window.confirm('Delete this short-term goal?')) return;
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        shortTermGoals: d.goalPlan.shortTermGoals.filter((goal) => goal.id !== goalId),
-        actionItems: d.goalPlan.actionItems.map((item) => item.goalId === goalId ? { ...item, goalId: '' } : item)
-      }
-    }));
-  };
-
-  const addActionItem = () => {
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        actionItems: [...d.goalPlan.actionItems, { id: uid(), title: '', goalId: '', dueDate: '', status: 'todo' }]
-      }
-    }));
-  };
-
-  const updateActionItem = (itemId, patch) => {
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        actionItems: d.goalPlan.actionItems.map((item) => item.id === itemId ? { ...item, ...patch } : item)
-      }
-    }));
-  };
-
-  const removeActionItem = (itemId) => {
-    if (!window.confirm('Delete this action item?')) return;
-    setDraft((d) => ({
-      ...d,
-      goalPlan: {
-        ...d.goalPlan,
-        actionItems: d.goalPlan.actionItems.filter((item) => item.id !== itemId)
-      }
-    }));
-  };
-
   function findGoalTarget(categories, nameMatcher) {
     for (const c of categories) {
       for (const g of c.goals) {
@@ -330,16 +465,11 @@ export default function SettingsEditor({ data, setData, onClose }) {
       alert('Long-term goal cannot be blank');
       return;
     }
-    for (const goal of draft.goalPlan.shortTermGoals) {
-      if (!goal.title.trim()) { alert('Short-term goal title cannot be blank'); return; }
-    }
-    for (const item of draft.goalPlan.actionItems) {
-      if (!item.title.trim()) { alert('Action item title cannot be blank'); return; }
-    }
-
     const prevWeightUnit = data.settings?.units?.weight || 'lb';
     const nextWeightUnit = draft.units.weight;
-    const categoriesToPersist = draft.categories;
+    const categoriesToPersist = stripDraftFields(draft.categories);
+    const shortTermGoalsToPersist = stripDraftFields(draft.goalPlan.shortTermGoals);
+    const actionItemsToPersist = stripDraftFields(draft.goalPlan.actionItems);
 
     const workoutsPerWeek = findGoalTarget(categoriesToPersist, 'workout');
     const leetcodePerWeek = findGoalTarget(categoriesToPersist, 'leetcode');
@@ -359,8 +489,8 @@ export default function SettingsEditor({ data, setData, onClose }) {
       },
       goalPlan: {
         ...prev.goalPlan,
-        shortTermGoals: draft.goalPlan.shortTermGoals,
-        actionItems: draft.goalPlan.actionItems
+        shortTermGoals: shortTermGoalsToPersist,
+        actionItems: actionItemsToPersist
       },
       settings: {
         ...prev.settings,
@@ -400,27 +530,28 @@ export default function SettingsEditor({ data, setData, onClose }) {
   };
 
   const activeCat = draft.categories.find(c => c.id === activeCatId) || (draft.categories[0] || null);
+  const hasSubmodalOpen = showAddCategoryDialog || showPlanIntakeDialog;
 
   return (
     <div className="modal-backdrop" onClick={() => { if (typeof onClose === 'function') onClose(); }}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={settingsModalRef} className={`modal-content ${hasSubmodalOpen ? 'modal-content-submodal-open' : ''}`} onClick={(e) => e.stopPropagation()}>
         <section className="card stack-gap">
           <div className="card-head">
             <h2>Settings</h2>
-            <p>Customize long-term goal, target date, short-term plan, and category goals.</p>
+            <p>Customize your long-term direction and the categories and goals you want to track.</p>
           </div>
 
           <div>
             <div className="settings-hint" style={{ marginBottom: 12 }}>
               <strong>How these settings affect tracking:</strong>
               <p>
-                Long-term goal appears in the header. Short-term goals and action items appear in Dashboard Roadmap and drive progress percentages.
+                Your long-term goal appears in the header. Planner-generated milestones and action steps still appear in the Dashboard Roadmap.
               </p>
             </div>
 
             <div className="settings-section-tabs">
               <p className="helper-text" style={{ marginTop: 0 }}>
-                Use these tabs to edit everything: long-term plan, short-term milestones, action items, categories/goals, and units.
+                Use these tabs to edit your long-term goal and the categories and goals you want to track.
               </p>
               <div className="tabs" role="tablist" aria-label="Settings sections">
                 {sectionTabs.map((section) => (
@@ -456,139 +587,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
               </div>
             )}
 
-            {activeSection === 'units' && (
-              <div className="form-card" style={{ marginBottom: 12 }}>
-                <div className="card-head">
-                  <h3>Units</h3>
-                  <p>Choose how values are displayed and entered across the tracker.</p>
-                </div>
-                <div className="goal-planner-grid">
-                  <label className="field">
-                    <span>Weight unit</span>
-                    <select value={draft.units.weight} onChange={(e) => updateUnits({ weight: e.target.value })}>
-                      <option value="lb">lb (imperial)</option>
-                      <option value="kg">kg (metric)</option>
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span>Workout duration unit</span>
-                    <select value={draft.units.duration} onChange={(e) => updateUnits({ duration: e.target.value })}>
-                      <option value="min">minutes</option>
-                      <option value="hr">hours</option>
-                    </select>
-                  </label>
-                </div>
-                <p className="helper-text">When weight unit changes, existing weight logs and targets are auto-converted.</p>
-              </div>
-            )}
-
-            {activeSection === 'shortGoals' && (
-              <div className="form-card" style={{ marginBottom: 12 }}>
-                <div className="card-head">
-                  <h3>Short-term goals</h3>
-                  <p>Define measurable milestones so progress can be tracked.</p>
-                </div>
-                <div className="planner-columns" aria-hidden="true">
-                  <span>Milestone</span>
-                  <span>Done</span>
-                  <span>Target</span>
-                  <span>Due date</span>
-                  <span>Progress</span>
-                  <span>Action</span>
-                </div>
-                {draft.goalPlan.shortTermGoals.map((goal) => {
-                  const percent = goal.targetValue > 0 ? Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100)) : 0;
-                  return (
-                    <div className="goal-planner-row" key={goal.id}>
-                      <div className="mobile-field" data-label="Milestone">
-                        <input
-                          value={goal.title}
-                          onChange={(e) => updateShortTermGoal(goal.id, { title: e.target.value })}
-                          placeholder="Milestone title (example: Complete 30 C++ problems)"
-                          aria-label="Short-term milestone title"
-                        />
-                      </div>
-                      <div className="mobile-field" data-label="Done">
-                        <input
-                          type="number"
-                          min="0"
-                          value={goal.currentValue}
-                          onChange={(e) => updateShortTermGoal(goal.id, { currentValue: Number(e.target.value) || 0 })}
-                          placeholder="Done"
-                          aria-label="Completed amount"
-                        />
-                      </div>
-                      <div className="mobile-field" data-label="Target">
-                        <input
-                          type="number"
-                          min="1"
-                          value={goal.targetValue}
-                          onChange={(e) => updateShortTermGoal(goal.id, { targetValue: Number(e.target.value) || 1 })}
-                          placeholder="Target"
-                          aria-label="Target amount"
-                        />
-                      </div>
-                      <div className="mobile-field" data-label="Due date">
-                        <input type="date" value={goal.dueDate} onChange={(e) => updateShortTermGoal(goal.id, { dueDate: e.target.value })} aria-label="Milestone due date" />
-                      </div>
-                      <div className="mobile-field" data-label="Progress">
-                        <span className="goal-progress-chip">{percent}%</span>
-                      </div>
-                      <div className="mobile-field" data-label="Action">
-                        <button className="secondary" onClick={() => removeShortTermGoal(goal.id)}>Delete</button>
-                      </div>
-                    </div>
-                  );
-                })}
-                <p className="helper-text">Example: Done `3`, Target `10` means you are 30% complete.</p>
-                <button className="secondary" onClick={addShortTermGoal}>Add short-term goal</button>
-              </div>
-            )}
-
-            {activeSection === 'actions' && (
-              <div className="form-card" style={{ marginBottom: 12 }}>
-                <div className="card-head">
-                  <h3>Action items</h3>
-                  <p>Break milestones into executable tasks and mark completion.</p>
-                </div>
-                <div className="planner-columns action-columns" aria-hidden="true">
-                  <span>Action item</span>
-                  <span>Linked milestone</span>
-                  <span>Status</span>
-                  <span>Due date</span>
-                  <span>Action</span>
-                </div>
-                {draft.goalPlan.actionItems.map((item) => (
-                  <div className="goal-planner-row action-row" key={item.id}>
-                    <div className="mobile-field" data-label="Action item">
-                      <input value={item.title} onChange={(e) => updateActionItem(item.id, { title: e.target.value })} placeholder="Action item" />
-                    </div>
-                    <div className="mobile-field" data-label="Linked milestone">
-                      <select value={item.goalId} onChange={(e) => updateActionItem(item.id, { goalId: e.target.value })}>
-                        <option value="">Link milestone</option>
-                        {draft.goalPlan.shortTermGoals.map((goal) => (
-                          <option key={goal.id} value={goal.id}>{goal.title || 'Untitled goal'}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="mobile-field" data-label="Status">
-                      <select value={item.status} onChange={(e) => updateActionItem(item.id, { status: e.target.value })}>
-                        <option value="todo">To do</option>
-                        <option value="done">Done</option>
-                      </select>
-                    </div>
-                    <div className="mobile-field" data-label="Due date">
-                      <input type="date" value={item.dueDate} onChange={(e) => updateActionItem(item.id, { dueDate: e.target.value })} />
-                    </div>
-                    <div className="mobile-field" data-label="Action">
-                      <button className="secondary" onClick={() => removeActionItem(item.id)}>Delete</button>
-                    </div>
-                  </div>
-                ))}
-                <button className="secondary" onClick={addActionItem}>Add action item</button>
-              </div>
-            )}
-
             {activeSection === 'categories' && (
               <>
                 <div className="settings-tabs">
@@ -597,7 +595,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
                       <button key={cat.id} type="button" className={`tab ${cat.id === activeCatId ? 'active' : ''}`} onClick={() => setActiveCatId(cat.id)}>{cat.name}</button>
                     ))}
                   </div>
-                  <div style={{ marginLeft: 12 }}>
+                  <div style={{ marginLeft: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="primary" onClick={() => openPlanIntake('append')}>Build category from goal</button>
+                    {lastGeneratedDraft && <button className="secondary" onClick={() => openPlanIntake('replace')}>Regenerate last draft</button>}
                     <button className="secondary" onClick={addCategory}>Add category</button>
                   </div>
                 </div>
@@ -609,7 +609,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
                       <button className="secondary" onClick={() => removeCategory(activeCat.id)}>Delete category</button>
                     </div>
                     <p className="helper-text" style={{ marginTop: 0 }}>
-                      Keep it simple and positive: what would you like to achieve, how much progress feels good, and how often can you do it. Example: Read | 20 | pages | week. For weight goals, use {draft.units.weight} and set frequency to target.
+                      Keep it simple and positive: what would you like to achieve, how much progress feels good, and how often can you do it.
+                      Examples: Read | 20 | pages | week, Protein intake | 120 | g | day, Water intake | 3 | liters | day, Sleep duration | 8 | hours | day.
+                      For weight outcomes, use {draft.units.weight} and set frequency to target.
                     </p>
 
                     <div className="planner-columns category-columns" aria-hidden="true">
@@ -622,8 +624,12 @@ export default function SettingsEditor({ data, setData, onClose }) {
                     </div>
 
                     <div className="goals-list">
-                      {activeCat.goals.map((g) => (
-                        <div className="goal-row" key={g.id}>
+                      {activeCat.goals.map((g) => {
+                        const unitOptions = getSuggestedUnits(g, draft.units.weight);
+                        const periodOptions = getSuggestedPeriods(g);
+                        const hintText = getGoalHintText(g);
+
+                        return <div className="goal-row" key={g.id}>
                           <div className="mobile-field" data-label="What would you like to achieve?">
                             <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} placeholder="Example: Learn language" aria-label="Category goal name" />
                           </div>
@@ -632,6 +638,18 @@ export default function SettingsEditor({ data, setData, onClose }) {
                           </div>
                           <div className="mobile-field" data-label="Unit">
                             <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="times / pages / kg" aria-label="Category goal unit" />
+                            <div className="quick-chip-group" aria-label="Suggested unit shortcuts">
+                              {unitOptions.map((unitOption) => (
+                                <button
+                                  key={`${g.id}-unit-${unitOption}`}
+                                  type="button"
+                                  className={`quick-chip ${String(g.unit || '').toLowerCase() === String(unitOption).toLowerCase() ? 'active' : ''}`}
+                                  onClick={() => updateGoal(activeCat.id, g.id, { unit: unitOption })}
+                                >
+                                  {unitOption}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                           <div className="mobile-field" data-label="Any time you get a chance?">
                             <input
@@ -642,6 +660,18 @@ export default function SettingsEditor({ data, setData, onClose }) {
                               placeholder="day / week / month / target"
                               aria-label="Goal frequency period"
                             />
+                            <div className="quick-chip-group" aria-label="Suggested frequency shortcuts">
+                              {periodOptions.map((periodOption) => (
+                                <button
+                                  key={`${g.id}-period-${periodOption}`}
+                                  type="button"
+                                  className={`quick-chip ${normalizeGoalPeriod(g.period) === periodOption ? 'active' : ''}`}
+                                  onClick={() => updateGoal(activeCat.id, g.id, { period: periodOption })}
+                                >
+                                  {periodOption}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                           <div className="mobile-field" data-label="Victory day (optional)">
                             <div>
@@ -652,8 +682,9 @@ export default function SettingsEditor({ data, setData, onClose }) {
                           <div className="mobile-field" data-label="Action">
                             <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
                           </div>
-                        </div>
-                      ))}
+                          {hintText && <div className="goal-row-hint">{hintText}</div>}
+                        </div>;
+                      })}
 
                       <div style={{ marginTop: 8 }}>
                         <button className="secondary" onClick={() => addGoal(activeCat.id)}>Add goal</button>
@@ -677,43 +708,234 @@ export default function SettingsEditor({ data, setData, onClose }) {
               </>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <div className="settings-actions settings-actions-sticky" style={{ marginTop: 16 }}>
               <button className="secondary" onClick={cancel}>Cancel</button>
               <button className="primary" onClick={apply}>Apply</button>
             </div>
           </div>
 
-          {showAddCategoryDialog && (
-            <div className="submodal-backdrop" onClick={cancelAddCategory}>
-              <div className="submodal-content" onClick={(e) => e.stopPropagation()}>
-                <h3 style={{ marginBottom: 8 }}>Add category</h3>
-                <p style={{ marginBottom: 12, color: '#64748b' }}>
-                  Create a category name. It will be added only after you click Save.
-                </p>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    confirmAddCategory();
-                  }}
-                >
-                  <input
-                    autoFocus
-                    value={pendingCategoryName}
-                    onChange={(e) => setPendingCategoryName(e.target.value)}
-                    placeholder="Example: Career"
-                  />
-                  <div className="submodal-actions">
-                    <button type="button" className="secondary" onClick={cancelAddCategory}>Cancel</button>
-                    <button type="submit" className="primary">Save</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-
         </section>
       </div>
+
+      {showAddCategoryDialog && (
+        <div className="submodal-backdrop" onClick={cancelAddCategory}>
+          <div className="submodal-content" style={addCategorySubmodalStyle} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 8 }}>Add category</h3>
+            <p style={{ marginBottom: 12, color: '#64748b' }}>
+              Create a category name. It will be added only after you click Save.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmAddCategory();
+              }}
+            >
+              <input
+                autoFocus
+                value={pendingCategoryName}
+                onChange={(e) => setPendingCategoryName(e.target.value)}
+                placeholder="Example: Career"
+              />
+              <div className="submodal-actions">
+                <button type="button" className="secondary" onClick={cancelAddCategory}>Cancel</button>
+                <button type="submit" className="primary">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showPlanIntakeDialog && (
+        <div className="submodal-backdrop" onClick={closePlanIntake}>
+          <div className="submodal-content planner-submodal" style={plannerSubmodalStyle} onClick={(e) => e.stopPropagation()}>
+            <div className="planner-submodal-header">
+              <h3 style={{ marginBottom: 8 }}>{planIntakeMode === 'replace' ? 'Regenerate your plan' : 'Build your plan'}</h3>
+              <p style={{ marginBottom: 0, color: '#64748b' }}>
+                Tell us your goal, where you are now, and where you want to go. We will suggest a practical draft plan you can edit.
+              </p>
+              {planIntakeMode === 'replace' && lastGeneratedDraft && (
+                <div className="settings-hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                  <strong>Tip:</strong>
+                  <p>Reopen and change these answers anytime, then regenerate the draft before you click Apply.</p>
+                </div>
+              )}
+            </div>
+            <div className="planner-submodal-body">
+                <label className="field">
+                  <span>What kind of goal is this?</span>
+                  <select
+                    value={planIntake.planType}
+                    onChange={(e) => setPlanIntake((p) => ({ ...p, planType: e.target.value, categoryName: p.categoryName || (e.target.value === 'weight' ? 'Health' : e.target.value === 'study' ? 'Learning' : e.target.value === 'career' ? 'Career' : '') }))}
+                  >
+                    <option value="general">General</option>
+                    <option value="weight">Weight / health</option>
+                    <option value="study">Study / class</option>
+                    <option value="career">Career / business</option>
+                  </select>
+                </label>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Category name</span>
+                    <input
+                      value={planIntake.categoryName}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, categoryName: e.target.value }))}
+                      placeholder="Example: Health"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Target day</span>
+                    <input
+                      type="date"
+                      value={planIntake.targetDate || ''}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, targetDate: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                {(planIntake.planType === 'weight' || planIntake.planType === 'study') && (
+                  <div className="goal-planner-grid">
+                    <label className="field">
+                      <span>Current situation</span>
+                      <input
+                        value={planIntake.currentValue}
+                        onChange={(e) => setPlanIntake((p) => ({ ...p, currentValue: e.target.value }))}
+                        placeholder={planIntake.planType === 'weight' ? 'Example: 210' : 'Example: Mid B average'}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Goal target</span>
+                      <input
+                        value={planIntake.targetValue}
+                        onChange={(e) => setPlanIntake((p) => ({ ...p, targetValue: e.target.value }))}
+                        placeholder={planIntake.planType === 'weight' ? 'Example: 160' : 'Example: A+'}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Unit</span>
+                      <input
+                        value={planIntake.targetUnit}
+                        onChange={(e) => setPlanIntake((p) => ({ ...p, targetUnit: e.target.value }))}
+                        placeholder={planIntake.planType === 'weight' ? 'lb / kg' : 'score / grade / chapters'}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <label className="field">
+                  <span>What would you like to achieve?</span>
+                  <input
+                    value={planIntake.goalText}
+                    onChange={(e) => setPlanIntake((p) => ({ ...p, goalText: e.target.value }))}
+                    placeholder="Example: I want to become Director of AI in the next 3 years."
+                  />
+                </label>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Available hours per week</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={planIntake.availableHoursPerWeek}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, availableHoursPerWeek: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      onBlur={() => setPlanIntake((p) => ({ ...p, availableHoursPerWeek: Number(p.availableHoursPerWeek) || 1 }))}
+                    />
+                  </label>
+                </div>
+
+                {timelineSummary && (
+                  <p className="helper-text" style={{ marginTop: 0 }}>
+                    Timeline estimate from your target day: {timelineSummary}.
+                  </p>
+                )}
+
+                <label className="field">
+                  <span>Anything we should keep in mind?</span>
+                  <textarea
+                    rows="3"
+                    value={planIntake.constraints}
+                    onChange={(e) => setPlanIntake((p) => ({ ...p, constraints: e.target.value }))}
+                    placeholder="Example: Busy workdays, knee pain, only evenings available"
+                  />
+                </label>
+
+                <div className="settings-hint" style={{ marginBottom: 12 }}>
+                  <strong>{planFeedback.isAggressive ? 'Gentle reality check' : 'Planning note'}</strong>
+                  <p>{planFeedback.message}</p>
+                  {planFeedback.isAggressive && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, color: '#475569', fontSize: '14px' }}>
+                      <input
+                        type="checkbox"
+                        checked={planIntake.useSuggestedTimeline}
+                        onChange={(e) => setPlanIntake((p) => ({ ...p, useSuggestedTimeline: e.target.checked }))}
+                        style={{ width: 'auto' }}
+                      />
+                      Use the suggested easier timeline ({planFeedback.recommendedWeeks} weeks)
+                    </label>
+                  )}
+                </div>
+
+                {planPreview && (
+                  <div className="form-card" style={{ marginBottom: 12 }}>
+                    <div className="card-head" style={{ marginBottom: 10 }}>
+                      <h3 style={{ marginBottom: 6 }}>Draft preview</h3>
+                      <p>
+                        Category: <strong>{planPreview.categoryName}</strong>
+                      </p>
+                    </div>
+
+                    <div className="goal-planner-grid">
+                      <div className="mini-form">
+                        <strong style={{ display: 'block', marginBottom: 8, color: '#0f172a' }}>Suggested goals</strong>
+                        <div className="stack-gap">
+                          {planPreview.goals.map((goal) => (
+                            <div key={`${goal.name}-${goal.period}`}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>{goal.name}</div>
+                              <div className="helper-text" style={{ margin: '4px 0 0' }}>
+                                {goal.period === 'target' ? `Target ${goal.target} ${goal.unit}` : `${goal.target} ${goal.unit} per ${goal.period}`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mini-form">
+                        <strong style={{ display: 'block', marginBottom: 8, color: '#0f172a' }}>Suggested milestones</strong>
+                        <div className="stack-gap">
+                          {planPreview.milestones.map((milestone) => (
+                            <div key={`${milestone.title}-${milestone.dueDate}`}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>{milestone.title}</div>
+                              <div className="helper-text" style={{ margin: '4px 0 0' }}>Due by {milestone.dueDate}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mini-form" style={{ marginTop: 10 }}>
+                      <strong style={{ display: 'block', marginBottom: 8, color: '#0f172a' }}>First action steps</strong>
+                      <div className="stack-gap">
+                        {planPreview.actions.map((action) => (
+                          <div key={`${action.title}-${action.dueDate}`}>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{action.title}</div>
+                            <div className="helper-text" style={{ margin: '4px 0 0' }}>Target date: {action.dueDate}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
+            </div>{/* /.planner-submodal-body */}
+            <div className="submodal-actions planner-submodal-actions">
+              <button type="button" className="secondary" onClick={closePlanIntake}>Cancel</button>
+              <button type="button" className="primary" onClick={() => generatePlanFromIntake(planIntakeMode)}>{planIntakeMode === 'replace' ? 'Regenerate draft plan' : 'Generate draft plan'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
