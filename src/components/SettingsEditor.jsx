@@ -608,13 +608,15 @@ export default function SettingsEditor({ data, setData, onClose }) {
                       <input className="category-name" value={activeCat.name} onChange={(e) => updateCategoryName(activeCat.id, e.target.value)} />
                       <button className="secondary" onClick={() => removeCategory(activeCat.id)}>Delete category</button>
                     </div>
-                    <p className="helper-text" style={{ marginTop: 0 }}>Set the unit explicitly for each goal (examples: sessions, pages, kg, hours). Weight goals use {draft.units.weight} by default.</p>
+                    <p className="helper-text" style={{ marginTop: 0 }}>
+                      Keep it simple and positive: what would you like to achieve, how much progress feels good, and how often can you do it. Example: Read | 20 | pages | week. For weight goals, use {draft.units.weight} and set frequency to target.
+                    </p>
 
                     <div className="planner-columns category-columns" aria-hidden="true">
-                      <span>Goal name</span>
-                      <span>Target</span>
+                      <span>What would you like to achieve?</span>
+                      <span>How much progress?</span>
                       <span>Unit</span>
-                      <span>Frequency</span>
+                      <span>Any time you get a chance?</span>
                       <span>Victory day</span>
                       <span>Action</span>
                     </div>
@@ -622,22 +624,22 @@ export default function SettingsEditor({ data, setData, onClose }) {
                     <div className="goals-list">
                       {activeCat.goals.map((g) => (
                         <div className="goal-row" key={g.id}>
-                          <div className="mobile-field" data-label="Goal name">
-                            <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} placeholder="Goal name (example: Workout)" aria-label="Category goal name" />
+                          <div className="mobile-field" data-label="What would you like to achieve?">
+                            <input className="goal-name" autoFocus={g.id === lastAddedGoalId} value={g.name} onChange={(e) => { updateGoal(activeCat.id, g.id, { name: e.target.value }); if (lastAddedGoalId === g.id) setLastAddedGoalId(null); }} placeholder="Example: Learn language" aria-label="Category goal name" />
                           </div>
-                          <div className="mobile-field" data-label="Target number">
-                            <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(activeCat.id, g.id, { target: Number(e.target.value) })} placeholder="Target" aria-label="Category goal target" />
+                          <div className="mobile-field" data-label="How much progress?">
+                            <input className="goal-target" type="number" value={g.target} onChange={(e) => updateGoal(activeCat.id, g.id, { target: Number(e.target.value) })} placeholder="Example: 20" aria-label="Category goal target" />
                           </div>
                           <div className="mobile-field" data-label="Unit">
-                            <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="sessions / kg / pages" aria-label="Category goal unit" />
+                            <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="times / pages / kg" aria-label="Category goal unit" />
                           </div>
-                          <div className="mobile-field" data-label="Frequency">
+                          <div className="mobile-field" data-label="Any time you get a chance?">
                             <input
                               className="goal-period"
                               list="goal-period-suggestions"
                               value={g.period || ''}
                               onChange={(e) => updateGoal(activeCat.id, g.id, { period: normalizeGoalPeriod(e.target.value) })}
-                              placeholder="week / day / month / target"
+                              placeholder="day / week / month / target"
                               aria-label="Goal frequency period"
                             />
                           </div>

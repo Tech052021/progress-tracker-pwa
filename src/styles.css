@@ -357,6 +357,11 @@ input:focus, textarea:focus, select:focus {
 /* Settings editor layout tweaks */
 .form-card .category-header { display: flex; gap: 12px; align-items: center; }
 .form-card .category-name { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; }
+.form-card .category-header .secondary {
+  width: auto;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
 .form-card .goals-list { margin-top: 6px; }
 .goal-row {
   display: grid;
@@ -706,10 +711,10 @@ input:focus, textarea:focus, select:focus {
     letter-spacing: 0.05em;
   }
 
-  .mobile-field[data-label="Goal name"]::before { content: 'Goal'; }
-  .mobile-field[data-label="Target number"]::before { content: 'Target'; }
+  .mobile-field[data-label="What would you like to achieve?"]::before { content: 'Goal'; }
+  .mobile-field[data-label="How much progress?"]::before { content: 'Progress'; }
   .mobile-field[data-label="Unit"]::before { content: 'Unit'; }
-  .mobile-field[data-label="Frequency"]::before { content: 'Frequency'; }
+  .mobile-field[data-label="Any time you get a chance?"]::before { content: 'How often'; }
   .mobile-field[data-label="Victory day (optional)"]::before { content: 'Victory day'; }
   .mobile-field[data-label="Action"]::before { content: 'Action'; }
 
@@ -752,5 +757,18 @@ input:focus, textarea:focus, select:focus {
   .brand-logo { width: 48px; height: 48px; }
   .brand-wordmark { font-size: clamp(1.5rem, 8vw, 2.1rem); }
   .hero-actions { width: 100%; }
-  .primary, .secondary, .tab { width: 100%; }
+  .hero-actions .primary, .hero-actions .secondary { width: 100%; }
+  .settings-actions .primary, .settings-actions .secondary { width: 100%; }
+  .tab { width: 100%; }
+
+  .form-card .category-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .form-card .category-name,
+  .form-card .category-header .secondary {
+    width: 100%;
+  }
 }
