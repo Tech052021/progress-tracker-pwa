@@ -235,23 +235,14 @@ function getWeeksUntilTargetDate(targetDate) {
 
 
 export default function SettingsEditor({ data, setData, onClose }) {
-  const sectionTabs = [
-    { id: 'profile', label: 'Long-term goal' },
-    { id: 'categories', label: 'Categories and goals' }
-  ];
-
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
     units: migrateUnits(data),
     categories: migrateCategories(data)
   }));
-  const [activeSection, setActiveSection] = useState('profile');
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
-  // Add-category dialog state (do not mutate categories until save)
-  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
-  const [pendingCategoryName, setPendingCategoryName] = useState('');
   const [showPlanIntakeDialog, setShowPlanIntakeDialog] = useState(false);
   const [planIntake, setPlanIntake] = useState(() => createDefaultPlanIntake());
   const [planIntakeMode, setPlanIntakeMode] = useState('append');
@@ -339,42 +330,13 @@ export default function SettingsEditor({ data, setData, onClose }) {
     }
   }, [draft.categories, activeCatId]);
 
-  const { plannerSubmodalStyle, addCategorySubmodalStyle } = useLayeredModalSizing(
+  const { plannerSubmodalStyle } = useLayeredModalSizing(
     settingsModalRef,
-    showAddCategoryDialog || showPlanIntakeDialog
+    showPlanIntakeDialog
   );
 
   const updateCategoryName = (catId, name) => {
     setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, name } : c) }));
-  };
-
-  const addCategory = () => {
-    setPendingCategoryName('');
-    setShowAddCategoryDialog(true);
-  };
-
-  const confirmAddCategory = () => {
-    const name = pendingCategoryName.trim();
-    if (!name) {
-      alert('Category name cannot be blank');
-      return;
-    }
-    if (draft.categories.some((c) => c.name.trim().toLowerCase() === name.toLowerCase())) {
-      alert('A category with this name already exists');
-      return;
-    }
-
-    const newId = uid();
-    setDraft((d) => ({ ...d, categories: [...d.categories, { id: newId, name, goals: [] }] }));
-    // Activate the newly added category so the user can edit goals immediately.
-    setActiveCatId(newId);
-    setShowAddCategoryDialog(false);
-    setPendingCategoryName('');
-  };
-
-  const cancelAddCategory = () => {
-    setShowAddCategoryDialog(false);
-    setPendingCategoryName('');
   };
 
   const openPlanIntake = (mode = 'append') => {
@@ -408,7 +370,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
     });
 
     if (nextActiveId) setActiveCatId(nextActiveId);
-    setActiveSection('categories');
     setLastGeneratedDraft({ draftId, intake: { ...planIntake }, categoryName: blueprint.categoryName });
     closePlanIntake();
     alert(mode === 'replace' ? 'Draft plan regenerated. Review and edit before clicking Apply.' : 'Draft plan generated. Review and edit before clicking Apply.');
@@ -461,10 +422,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
       if (!c.name.trim()) { alert('Category names cannot be blank'); return; }
       for (const g of c.goals) if (!g.name.trim()) { alert('Goal names cannot be blank'); return; }
     }
-    if (!draft.profile.longTermGoal.trim()) {
-      alert('Long-term goal cannot be blank');
-      return;
-    }
     const prevWeightUnit = data.settings?.units?.weight || 'lb';
     const nextWeightUnit = draft.units.weight;
     const categoriesToPersist = stripDraftFields(draft.categories);
@@ -480,13 +437,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
 
     setData((prev) => ({
       ...prev,
-      profile: {
-        ...prev.profile,
-        longTermGoal: draft.profile.longTermGoal,
-        targetDescriptor: draft.profile.targetDescriptor,
-        targetDate: draft.profile.targetDate,
-        targetCompanies: draft.profile.targetDescriptor
-      },
       goalPlan: {
         ...prev.goalPlan,
         shortTermGoals: shortTermGoalsToPersist,
@@ -515,7 +465,7 @@ export default function SettingsEditor({ data, setData, onClose }) {
         }))
       }
     }));
-    alert('Settings applied');
+    alert('Goals updated');
     if (typeof onClose === 'function') onClose();
   };
 
@@ -530,64 +480,25 @@ export default function SettingsEditor({ data, setData, onClose }) {
   };
 
   const activeCat = draft.categories.find(c => c.id === activeCatId) || (draft.categories[0] || null);
-  const hasSubmodalOpen = showAddCategoryDialog || showPlanIntakeDialog;
+  const hasSubmodalOpen = showPlanIntakeDialog;
 
   return (
-    <div className="modal-backdrop" onClick={() => { if (typeof onClose === 'function') onClose(); }}>
+    <div className="modal-backdrop">
       <div ref={settingsModalRef} className={`modal-content ${hasSubmodalOpen ? 'modal-content-submodal-open' : ''}`} onClick={(e) => e.stopPropagation()}>
         <section className="card stack-gap">
           <div className="card-head">
-            <h2>Settings</h2>
-            <p>Customize your long-term direction and the categories and goals you want to track.</p>
+            <h2>Goals</h2>
+            <p>Manage focus areas, edit measurable goals, and generate new goal plans from natural language.</p>
           </div>
 
           <div>
             <div className="settings-hint" style={{ marginBottom: 12 }}>
-              <strong>How these settings affect tracking:</strong>
+              <strong>How this workspace affects tracking:</strong>
               <p>
-                Your long-term goal appears in the header. Planner-generated milestones and action steps still appear in the Dashboard Roadmap.
+                The goals you define here drive dashboard cards, logging templates, progress summaries, and planner-generated roadmap items.
               </p>
             </div>
 
-            <div className="settings-section-tabs">
-              <p className="helper-text" style={{ marginTop: 0 }}>
-                Use these tabs to edit your long-term goal and the categories and goals you want to track.
-              </p>
-              <div className="tabs" role="tablist" aria-label="Settings sections">
-                {sectionTabs.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    className={`tab ${activeSection === section.id ? 'active' : ''}`}
-                    onClick={() => setActiveSection(section.id)}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {activeSection === 'profile' && (
-              <div className="form-card" style={{ marginBottom: 12 }}>
-                <h3>Term goal details</h3>
-                <div className="goal-planner-grid">
-                  <label className="field">
-                    <span>Target</span>
-                    <input value={draft.profile.targetDescriptor} onChange={(e) => updateProfile({ targetDescriptor: e.target.value })} placeholder="Example: Director role at NVIDIA/Google" />
-                  </label>
-                  <label className="field goal-planner-full">
-                    <span>Long-term goal</span>
-                    <input value={draft.profile.longTermGoal} onChange={(e) => updateProfile({ longTermGoal: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    <span>Target date</span>
-                    <input type="date" value={draft.profile.targetDate} onChange={(e) => updateProfile({ targetDate: e.target.value })} />
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'categories' && (
               <>
                 <div className="settings-tabs">
                   <div className="tabs" role="tablist">
@@ -598,7 +509,6 @@ export default function SettingsEditor({ data, setData, onClose }) {
                   <div style={{ marginLeft: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="primary" onClick={() => openPlanIntake('append')}>Build category from goal</button>
                     {lastGeneratedDraft && <button className="secondary" onClick={() => openPlanIntake('replace')}>Regenerate last draft</button>}
-                    <button className="secondary" onClick={addCategory}>Add category</button>
                   </div>
                 </div>
 
@@ -702,11 +612,10 @@ export default function SettingsEditor({ data, setData, onClose }) {
                   </div>
                 ) : (
                   <div className="empty-state">
-                    No categories defined. Add one to get started.
+                    No focus areas defined yet. Use the planner to create one from a goal.
                   </div>
                 )}
               </>
-            )}
 
             <div className="settings-actions settings-actions-sticky" style={{ marginTop: 16 }}>
               <button className="secondary" onClick={cancel}>Cancel</button>
@@ -716,37 +625,8 @@ export default function SettingsEditor({ data, setData, onClose }) {
 
         </section>
       </div>
-
-      {showAddCategoryDialog && (
-        <div className="submodal-backdrop" onClick={cancelAddCategory}>
-          <div className="submodal-content" style={addCategorySubmodalStyle} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: 8 }}>Add category</h3>
-            <p style={{ marginBottom: 12, color: '#64748b' }}>
-              Create a category name. It will be added only after you click Save.
-            </p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                confirmAddCategory();
-              }}
-            >
-              <input
-                autoFocus
-                value={pendingCategoryName}
-                onChange={(e) => setPendingCategoryName(e.target.value)}
-                placeholder="Example: Career"
-              />
-              <div className="submodal-actions">
-                <button type="button" className="secondary" onClick={cancelAddCategory}>Cancel</button>
-                <button type="submit" className="primary">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {showPlanIntakeDialog && (
-        <div className="submodal-backdrop" onClick={closePlanIntake}>
+        <div className="submodal-backdrop">
           <div className="submodal-content planner-submodal" style={plannerSubmodalStyle} onClick={(e) => e.stopPropagation()}>
             <div className="planner-submodal-header">
               <h3 style={{ marginBottom: 8 }}>{planIntakeMode === 'replace' ? 'Regenerate your plan' : 'Build your plan'}</h3>

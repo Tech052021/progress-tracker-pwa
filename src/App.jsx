@@ -325,16 +325,12 @@ function useStoredData() {
 function App() {
   const [data, setData] = useStoredData();
   const [tab, setTab] = useState('dashboard');
-  const [dashTab, setDashTab] = useState('overview');
-  const [catTab, setCatTab] = useState('goals');
   const [dashLogOpen, setDashLogOpen] = useState(null);
-  const [catLogOpen, setCatLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeGoalCategoryId, setActiveGoalCategoryId] = useState(null);
   const fileInputRef = useRef(null);
 
-  useEffect(() => { setCatTab('goals'); }, [tab]);
-  useEffect(() => { setDashLogOpen(null); }, [dashTab]);
-  useEffect(() => { setCatLogOpen(null); }, [tab, catTab]);
+  useEffect(() => { setDashLogOpen(null); }, [tab]);
 
   const addEntry = (bucket, entry) => {
     const timestamp = entry.timestamp || createEntryTimestamp(entry.date);
@@ -432,6 +428,18 @@ function App() {
   }, [data.settings]);
 
   const normalizedCategories = useMemo(() => normalizeCategories(categories, weightUnit), [categories, weightUnit]);
+
+  useEffect(() => {
+    if (!normalizedCategories.length) {
+      setActiveGoalCategoryId(null);
+      return;
+    }
+    if (!normalizedCategories.some((category) => category.id === activeGoalCategoryId)) {
+      setActiveGoalCategoryId(normalizedCategories[0].id);
+    }
+  }, [normalizedCategories, activeGoalCategoryId]);
+
+  const activeGoalCategory = normalizedCategories.find((category) => category.id === activeGoalCategoryId) || normalizedCategories[0] || null;
 
   const focusGoals = useMemo(() => {
     return normalizedCategories
@@ -593,11 +601,22 @@ function App() {
             Build momentum across career, health, learning, and practice — even when life is messy.
           </p>
           <div className="hero-badges">
-            <span className="badge">Goal: {data.profile.longTermGoal}</span>
-            <span className="badge">Target: {data.profile.targetDescriptor || 'Set in settings'}</span>
-            <span className="badge">Target date: {data.profile.targetDate || 'Set in settings'}</span>
+            <span className="badge">Focus areas: {normalizedCategories.length}</span>
+            <span className="badge">Active area: {activeGoalCategory?.name || 'None yet'}</span>
             <span className="badge">Streak: {activityStreakDays} day{activityStreakDays === 1 ? '' : 's'}</span>
             <span className="badge">{currentWeek}</span>
+          </div>
+          <div className="tabs hero-nav-tabs" role="tablist" aria-label="Primary app navigation">
+            {[
+              ['dashboard', 'Dashboard'],
+              ['goals', 'Goals'],
+              ['progress', 'Progress'],
+              ['log', 'Log']
+            ].map(([id, label]) => (
+              <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => { setTab(id); setShowSettings(false); }}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <div className="hero-actions">
@@ -621,295 +640,244 @@ function App() {
         ))}
       </section>
 
-      <nav className="tabs">
-        {[ 'dashboard', ...normalizedCategories.map(c => c.name) ].map((item) => (
-          <button key={item} className={tab === item ? 'tab active' : 'tab'} onClick={() => { setTab(item); setShowSettings(false); }}>
-            {capitalize(item)}
-          </button>
-        ))}
-      </nav>
-
       {tab === 'dashboard' && (
-        <>
-          <div className="dash-sub-tabs">
-            {[['overview', 'Overview'], ['progress', 'Progress'], ['log', 'Log']].map(([id, label]) => (
-              <button key={id} type="button" className={dashTab === id ? 'dash-sub-tab active' : 'dash-sub-tab'} onClick={() => setDashTab(id)}>{label}</button>
-            ))}
-          </div>
+        <section className="card-grid two-up">
+          <section className="card momentum-card">
+            <div className="card-head">
+              <h2>Today momentum</h2>
+              <p>Clear daily target and streak to keep you consistent.</p>
+            </div>
+            {todayActivityCount >= dailyTarget && (
+              <div className="momentum-burst" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+            )}
+            <div className="momentum-header">
+              <div>
+                <p className="momentum-kicker">Daily target</p>
+                <h3 className="momentum-value">{todayActivityCount}/{dailyTarget}</h3>
+              </div>
+              <span className={todayActivityCount >= dailyTarget ? 'streak-pill hot' : 'streak-pill'}>
+                {activityStreakDays} day streak
+              </span>
+            </div>
+            <div className="progress-track"><div className="progress-fill" style={{ width: `${todayProgressPct}%` }} /></div>
+            <p className="momentum-message">{momentumMessage}</p>
+            <div className="snapshot-row"><span>Last 7 days activity</span><strong>{weeklyActivityCount} logs</strong></div>
+            <button className="primary" onClick={() => setTab('log')}>Log now</button>
+          </section>
 
-          {dashTab === 'overview' && (
-            <section className="card-grid two-up">
-              <section className="card momentum-card">
-                <div className="card-head">
-                  <h2>Today momentum</h2>
-                  <p>Clear daily target and streak to keep you consistent.</p>
-                </div>
-                {todayActivityCount >= dailyTarget && (
-                  <div className="momentum-burst" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                )}
-                <div className="momentum-header">
-                  <div>
-                    <p className="momentum-kicker">Daily target</p>
-                    <h3 className="momentum-value">{todayActivityCount}/{dailyTarget}</h3>
-                  </div>
-                  <span className={todayActivityCount >= dailyTarget ? 'streak-pill hot' : 'streak-pill'}>
-                    {activityStreakDays} day streak
-                  </span>
-                </div>
-                <div className="progress-track"><div className="progress-fill" style={{ width: `${todayProgressPct}%` }} /></div>
-                <p className="momentum-message">{momentumMessage}</p>
-                <div className="snapshot-row"><span>Last 7 days activity</span><strong>{weeklyActivityCount} logs</strong></div>
-                <button className="primary" onClick={() => setDashTab('log')}>Log now</button>
-              </section>
+          <section className="card">
+            <div className="card-head">
+              <h2>Goal roadmap</h2>
+              <p>Planner-generated milestones and action steps that are currently in motion.</p>
+            </div>
+            <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
+            <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
+            <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
+            <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
+          </section>
 
-              <section className="card">
-                <div className="card-head">
-                  <h2>Goal roadmap</h2>
-                  <p>Break down the long-term goal into measurable short-term goals and action items.</p>
-                </div>
-                <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
-                <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
-                <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
-                <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
-              </section>
+          <section className="card">
+            <div className="card-head">
+              <h2>Upcoming milestones</h2>
+              <p>Next due goals and actions</p>
+            </div>
+            <RoadmapList goals={shortTermGoals} actions={actionItems} />
+          </section>
 
-              <section className="card">
-                <div className="card-head">
-                  <h2>Upcoming milestones</h2>
-                  <p>Next due goals and actions</p>
-                </div>
-                <RoadmapList goals={shortTermGoals} actions={actionItems} />
-              </section>
-
-              <section className="card">
-                <div className="card-head">
-                  <h2>Focus next</h2>
-                  <p>Top priorities chosen from your active goals.</p>
-                </div>
-                {focusGoals.length ? (
-                  <div className="entry-list">
-                    {focusGoals.map((goal) => (
-                      <article className="entry-card" key={goal.id}>
-                        <div className="entry-top">
-                          <span className="chip">{goal.category}</span>
-                          <span className="entry-date">{formatGoalWindowLabel(goal.period)}</span>
-                        </div>
-                        <h4>{goal.name}</h4>
-                        <p>
-                          {goal.current}/{goal.target} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}
-                          {goal.remaining > 0 ? ` · ${goal.remaining} left` : ' · complete'}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">Add goals in Settings to get personalized priorities.</div>
-                )}
-              </section>
-
-              <section className="card">
-                <div className="card-head">
-                  <h2>Progress game</h2>
-                  <p>Level up through consistency and completed actions.</p>
-                </div>
-                <div className="snapshot-row"><span>Level</span><strong>{userLevel}</strong></div>
-                <div className="snapshot-row"><span>XP</span><strong>{experiencePoints}</strong></div>
-                <div className="snapshot-row"><span>Achievements</span><strong>{unlockedAchievements}/{achievements.length}</strong></div>
-                <div style={{ marginTop: 10 }}>
-                  <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.round((levelProgress / 250) * 100)}%` }} /></div>
-                  <p className="helper-text" style={{ marginBottom: 0 }}>{xpToNextLevel} XP to level {userLevel + 1}</p>
-                </div>
-                <div className="achievement-grid" style={{ marginTop: 10 }}>
-                  {achievements.map((item) => (
-                    <div key={item.id} className={item.unlocked ? 'achievement-chip unlocked' : 'achievement-chip'}>
-                      <strong>{item.label}</strong>
-                      <span>{item.hint}</span>
+          <section className="card">
+            <div className="card-head">
+              <h2>Focus next</h2>
+              <p>Top priorities chosen from your active goals.</p>
+            </div>
+            {focusGoals.length ? (
+              <div className="entry-list">
+                {focusGoals.map((goal) => (
+                  <article className="entry-card" key={goal.id}>
+                    <div className="entry-top">
+                      <span className="chip">{goal.category}</span>
+                      <span className="entry-date">{formatGoalWindowLabel(goal.period)}</span>
                     </div>
-                  ))}
-                </div>
-                <div className="note-box" style={{ marginTop: 12 }}>{messageOfTheDay}</div>
-              </section>
-            </section>
-          )}
-
-          {dashTab === 'progress' && (
-            <section className="card-grid two-up">
-              <section className="card">
-                <div className="card-head">
-                  <h2>Goal progress</h2>
-                  <p>Weekly and monthly scoreboards</p>
-                </div>
-                <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
-                <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
-                <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
-                <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
-                <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
-              </section>
-
-              <section className="card">
-                <div className="card-head">
-                  <h2>This month snapshot</h2>
-                  <p>Quick pulse on momentum</p>
-                </div>
-                <Snapshot label="Bug analyses" value={monthStats.bugs} />
-                <Snapshot label="Mentor discussions" value={monthStats.mentor} />
-                <Snapshot label="AI experiments" value={monthStats.ai} />
-                <Snapshot label="UVM topics" value={monthStats.uvm} />
-              </section>
-            </section>
-          )}
-
-          {dashTab === 'log' && (
-            <section className="card-grid two-up">
-              <section className="card">
-                <div className="card-head">
-                  <h2>Weight trend</h2>
-                  <p>Simple built-in chart ({weightUnit})</p>
-                </div>
-                <MiniLineChart data={weightSeries} />
-              </section>
-
-              <section className="card">
-                <div className="card-head">
-                  <h2>Daily reminder</h2>
-                  <p>Your minimum successful day</p>
-                </div>
-                <div className="note-box">{data.reminders.todayMustWin}</div>
-                {(() => {
-                  const allNames = normalizedCategories.flatMap(c => c.goals.map(g => g.name.toLowerCase()));
-                  const has = (kw) => allNames.some(n => n.includes(kw));
-                  const close = () => setDashLogOpen(null);
-                  const available = [
-                    has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
-                    has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
-                    has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
-                    has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
-                    has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
-                    has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
-                    has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
-                    has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
-                  ].filter(Boolean);
-                  if (available.length === 0) return <div className="empty-state">No goals configured. Add goals in Settings.</div>;
-                  const openItem = available.find(a => a.key === dashLogOpen);
-                  return (
-                    <>
-                      <div className="log-form-tabs">
-                        {available.map(({ key, label }) => (
-                          <button key={key} type="button"
-                            className={dashLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
-                            onClick={() => setDashLogOpen(dashLogOpen === key ? null : key)}>
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {openItem && <div className="log-form-body">{openItem.form}</div>}
-                    </>
-                  );
-                })()}
-              </section>
-            </section>
-          )}
-        </>
-      )}
-
-      {/* Dynamic category view — works for any category, including user-added ones */}
-      {tab !== 'dashboard' && !showSettings && (
-        (() => {
-          const cat = normalizedCategories.find(c => c.name === tab);
-          if (!cat) return null;
-          const gnames = cat.goals.map(g => g.name.toLowerCase());
-          const has = (kw) => gnames.some(n => n.includes(kw));
-          return (
-            <>
-              <div className="dash-sub-tabs">
-                {[['goals', 'Goals'], ['log', 'Log'], ['history', 'History']].map(([id, label]) => (
-                  <button key={id} type="button"
-                    className={catTab === id ? 'dash-sub-tab active' : 'dash-sub-tab'}
-                    onClick={() => setCatTab(id)}>
-                    {label}
-                  </button>
+                    <h4>{goal.name}</h4>
+                    <p>
+                      {goal.current}/{goal.target} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}
+                      {goal.remaining > 0 ? ` · ${goal.remaining} left` : ' · complete'}
+                    </p>
+                  </article>
                 ))}
               </div>
+            ) : (
+              <div className="empty-state">Open Goals to define the areas you want to track.</div>
+            )}
+          </section>
 
-              {catTab === 'goals' && (
-                <section className="card">
-                  <div className="card-head">
-                    <h2>{cat.name}</h2>
-                    <p>Goal progress for {cat.name}</p>
-                  </div>
-                  {cat.goals.length ? cat.goals.map((g) => (
-                    <div key={g.id} style={{ marginBottom: 12 }}>
-                      <ProgressRow label={g.name} value={goalCount(g)} target={g.target} unit={g.unit} />
-                    </div>
-                  )) : <div className="empty-state">No goals set. Add goals in Settings.</div>}
-                </section>
-              )}
+          <section className="card">
+            <div className="card-head">
+              <h2>Progress game</h2>
+              <p>Level up through consistency and completed actions.</p>
+            </div>
+            <div className="snapshot-row"><span>Level</span><strong>{userLevel}</strong></div>
+            <div className="snapshot-row"><span>XP</span><strong>{experiencePoints}</strong></div>
+            <div className="snapshot-row"><span>Achievements</span><strong>{unlockedAchievements}/{achievements.length}</strong></div>
+            <div style={{ marginTop: 10 }}>
+              <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.round((levelProgress / 250) * 100)}%` }} /></div>
+              <p className="helper-text" style={{ marginBottom: 0 }}>{xpToNextLevel} XP to level {userLevel + 1}</p>
+            </div>
+            <div className="achievement-grid" style={{ marginTop: 10 }}>
+              {achievements.map((item) => (
+                <div key={item.id} className={item.unlocked ? 'achievement-chip unlocked' : 'achievement-chip'}>
+                  <strong>{item.label}</strong>
+                  <span>{item.hint}</span>
+                </div>
+              ))}
+            </div>
+            <div className="note-box" style={{ marginTop: 12 }}>{messageOfTheDay}</div>
+          </section>
+        </section>
+      )}
 
-              {catTab === 'log' && (
-                <section className="card stack-gap">
-                  <div className="card-head">
-                    <h2>Log entry</h2>
-                    <p>Add a new {cat.name} entry</p>
+      {tab === 'goals' && (
+        <section className="card-grid two-up">
+          <section className="card">
+            <div className="card-head">
+              <h2>Goals workspace</h2>
+              <p>Pick a focus area, review live progress, and open the goal editor when you need to restructure.</p>
+            </div>
+            <div className="tabs" role="tablist" aria-label="Goal categories">
+              {normalizedCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                  onClick={() => setActiveGoalCategoryId(category.id)}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+              <button className="primary" onClick={() => setShowSettings(true)}>Open goals editor</button>
+              <button className="secondary" onClick={() => setTab('log')}>Go to log</button>
+            </div>
+            {activeGoalCategory ? (
+              <div style={{ marginTop: 16 }}>
+                <div className="snapshot-row"><span>Focus area</span><strong>{activeGoalCategory.name}</strong></div>
+                <div className="snapshot-row"><span>Tracked goals</span><strong>{activeGoalCategory.goals.length}</strong></div>
+                {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
+                  <div key={goal.id} style={{ marginTop: 12 }}>
+                    <ProgressRow label={goal.name} value={isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal)} target={goal.target} unit={goal.unit} />
                   </div>
-                  {(() => {
-                    const close = () => setCatLogOpen(null);
-                    const available = [
-                      has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
-                      has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
-                      has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
-                      has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
-                      has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
-                      has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
-                      has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
-                      has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
-                    ].filter(Boolean);
-                    if (available.length === 0) {
-                      return <div className="empty-state">No log templates match this category yet. Add mapped goals in Settings.</div>;
-                    }
-                    const openItem = available.find(a => a.key === catLogOpen);
-                    return (
-                      <>
-                        <div className="log-form-tabs">
-                          {available.map(({ key, label }) => (
-                            <button key={key} type="button"
-                              className={catLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
-                              onClick={() => setCatLogOpen(catLogOpen === key ? null : key)}>
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {openItem?.key === 'pool' && <div className="note-box">{data.reminders.preShotRoutine}</div>}
-                        {openItem && <div className="log-form-body">{openItem.form}</div>}
-                      </>
-                    );
-                  })()}
-                </section>
-              )}
+                )) : <div className="empty-state" style={{ marginTop: 12 }}>Use the goals editor to add goals to this focus area.</div>}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ marginTop: 12 }}>No focus areas yet.</div>
+            )}
+          </section>
 
-              {catTab === 'history' && (
-                <section className="card">
-                  <div className="card-head">
-                    <h2>History</h2>
-                    <p>Recent entries for {cat.name}</p>
+          <section className="card">
+            <div className="card-head">
+              <h2>Roadmap and history</h2>
+              <p>See how your active focus area connects to milestones and recent entries.</p>
+            </div>
+            <RoadmapList goals={shortTermGoals} actions={actionItems} />
+            {activeGoalCategory && (
+              <div style={{ marginTop: 16 }}>
+                <h3 style={{ marginBottom: 10 }}>Recent {activeGoalCategory.name} activity</h3>
+                <EntryList
+                  items={mergeEntries(activeGoalCategory.goals.map((goal) => {
+                    const bucket = mapGoalToBucket(goal.name);
+                    return [bucket || 'unknown', data.entries[bucket] || [], goal.name];
+                  }))}
+                  onDelete={removeEntry}
+                />
+              </div>
+            )}
+          </section>
+        </section>
+      )}
+
+      {tab === 'progress' && (
+        <section className="card-grid two-up">
+          <section className="card">
+            <div className="card-head">
+              <h2>Goal progress</h2>
+              <p>Weekly and monthly scoreboards</p>
+            </div>
+            <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
+            <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
+            <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
+            <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
+            <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h2>This month snapshot</h2>
+              <p>Quick pulse on momentum</p>
+            </div>
+            <Snapshot label="Bug analyses" value={monthStats.bugs} />
+            <Snapshot label="Mentor discussions" value={monthStats.mentor} />
+            <Snapshot label="AI experiments" value={monthStats.ai} />
+            <Snapshot label="UVM topics" value={monthStats.uvm} />
+          </section>
+        </section>
+      )}
+
+      {tab === 'log' && (
+        <section className="card-grid two-up">
+          <section className="card">
+            <div className="card-head">
+              <h2>Weight trend</h2>
+              <p>Simple built-in chart ({weightUnit})</p>
+            </div>
+            <MiniLineChart data={weightSeries} />
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h2>Daily reminder</h2>
+              <p>Your minimum successful day</p>
+            </div>
+            <div className="note-box">{data.reminders.todayMustWin}</div>
+            {(() => {
+              const allNames = normalizedCategories.flatMap(c => c.goals.map(g => g.name.toLowerCase()));
+              const has = (kw) => allNames.some(n => n.includes(kw));
+              const close = () => setDashLogOpen(null);
+              const available = [
+                has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
+                has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
+                has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
+                has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
+                has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
+                has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
+                has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
+                has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
+              ].filter(Boolean);
+              if (available.length === 0) return <div className="empty-state">No goals configured yet. Open Goals to define what should be tracked.</div>;
+              const openItem = available.find(a => a.key === dashLogOpen);
+              return (
+                <>
+                  <div className="log-form-tabs">
+                    {available.map(({ key, label }) => (
+                      <button key={key} type="button"
+                        className={dashLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
+                        onClick={() => setDashLogOpen(dashLogOpen === key ? null : key)}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                  <EntryList
-                    items={mergeEntries(cat.goals.map((g) => {
-                      const bucket = mapGoalToBucket(g.name);
-                      return [bucket || 'unknown', data.entries[bucket] || [], g.name];
-                    }))}
-                    onDelete={removeEntry}
-                  />
-                </section>
-              )}
-            </>
-          );
-        })()
+                  {openItem?.key === 'pool' && <div className="note-box">{data.reminders.preShotRoutine}</div>}
+                  {openItem && <div className="log-form-body">{openItem.form}</div>}
+                </>
+              );
+            })()}
+          </section>
+        </section>
       )}
 
       {showSettings && (
