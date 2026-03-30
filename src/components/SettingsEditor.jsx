@@ -20,6 +20,14 @@ function normalizeGoalPeriod(period) {
   return normalized || 'week';
 }
 
+function createDefaultCategories() {
+  return [
+    { id: uid(), name: 'Health', goals: [] },
+    { id: uid(), name: 'Career', goals: [] },
+    { id: uid(), name: 'Hobby', goals: [] }
+  ];
+}
+
 function formatTimeToVictory(victoryDate) {
   if (!victoryDate) return '';
   const today = new Date();
@@ -42,7 +50,7 @@ function formatTimeToVictory(victoryDate) {
 function migrateCategories(data) {
   const s = data.settings || {};
   const weightUnit = s.units?.weight || s.weightUnit || 'lb';
-  if (Array.isArray(s.categories) && s.categories.length) {
+  if (Array.isArray(s.categories)) {
     return s.categories.map((category) => ({
       ...category,
       goals: Array.isArray(category.goals)
@@ -55,8 +63,7 @@ function migrateCategories(data) {
     }));
   }
 
-  // Start with empty categories for new users
-  return [];
+  return createDefaultCategories();
 }
 
 function migrateProfile(data) {

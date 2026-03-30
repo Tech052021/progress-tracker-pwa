@@ -30,6 +30,41 @@ function normalizeCategories(categories, weightUnit = 'lb') {
   }));
 }
 
+function createDefaultCategories() {
+  return [
+    { id: 'health', name: 'Health', goals: [] },
+    { id: 'career', name: 'Career', goals: [] },
+    { id: 'hobby', name: 'Hobby', goals: [] }
+  ];
+}
+
+function isLegacySeededCategories(categories) {
+  if (!Array.isArray(categories) || categories.length !== 3) return false;
+  const byName = Object.fromEntries(categories.map((c) => [String(c.name || '').toLowerCase(), c]));
+  if (!byName.health || !byName.learning || !byName.practice) return false;
+
+  const healthGoals = (byName.health.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
+  const learningGoals = (byName.learning.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
+  const practiceGoals = (byName.practice.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
+
+  return (
+    healthGoals.join('|') === 'weight|workout' &&
+    learningGoals.join('|') === 'leetcode' &&
+    practiceGoals.join('|') === 'pool|uvm'
+  );
+}
+
+function deriveCategories(incomingCategories, weightUnit) {
+  if (Array.isArray(incomingCategories)) {
+    const normalized = normalizeCategories(incomingCategories, weightUnit);
+    if (isLegacySeededCategories(normalized)) {
+      return createDefaultCategories();
+    }
+    return normalized;
+  }
+  return createDefaultCategories();
+}
+
 function uid() {
   try { return crypto.randomUUID(); } catch { return String(Math.random()).slice(2); }
 }
@@ -114,6 +149,7 @@ const defaultData = {
     careerBlockMinutes: 45,
     targetWeight: '',
     currentWeight: '',
+    categories: createDefaultCategories(),
     units: {
       weight: 'lb',
       duration: 'min'
@@ -238,9 +274,7 @@ function normalizeData(raw) {
     settings: {
       ...defaultData.settings,
       ...incomingSettings,
-      categories: Array.isArray(incomingSettings.categories)
-        ? normalizeCategories(incomingSettings.categories, normalizedWeightUnit)
-        : incomingSettings.categories,
+      categories: deriveCategories(incomingSettings.categories, normalizedWeightUnit),
       units: {
         ...defaultData.settings.units,
         ...incomingUnits,
@@ -384,36 +418,11 @@ function App() {
       .filter((x) => !Number.isNaN(x.value));
   }, [data.entries.weights]);
 
-  // Helpers to derive categories and goals (fallback to legacy settings)
+  // Categories source-of-truth: settings.categories
   const categories = useMemo(() => {
     const s = data.settings || {};
-    if (Array.isArray(s.categories) && s.categories.length) return s.categories;
-
-    // fallback: build categories from legacy fields
-    return [
-      {
-        id: 'health',
-        name: 'Health',
-        goals: [
-          { id: 'workout', name: 'Workout', target: Number(s.workoutsPerWeek || 5), period: 'week', unit: 'sessions' },
-          { id: 'weight', name: 'Weight', target: s.targetWeight || '', period: 'target', unit: weightUnit }
-        ]
-      },
-      {
-        id: 'learning',
-        name: 'Learning',
-        goals: [{ id: 'leetcode', name: 'LeetCode', target: Number(s.leetcodePerWeek || 4), period: 'week', unit: 'problems' }]
-      },
-      {
-        id: 'practice',
-        name: 'Practice',
-        goals: [
-          { id: 'pool', name: 'Pool', target: Number(s.poolPracticePerWeek || 2), period: 'week', unit: 'sessions' },
-          { id: 'uvm', name: 'UVM', target: Number(s.uvmTopicsPerMonth || 2), period: 'month', unit: 'topics' }
-        ]
-      }
-    ];
-  }, [data.settings, weightUnit]);
+    return Array.isArray(s.categories) ? s.categories : [];
+  }, [data.settings]);
 
   const normalizedCategories = useMemo(() => normalizeCategories(categories, weightUnit), [categories, weightUnit]);
 
