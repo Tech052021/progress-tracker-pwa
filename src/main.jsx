@@ -10,6 +10,23 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
+// In local development, remove any previously installed service workers/caches
+// so localhost always reflects the latest source + HMR changes.
+if (import.meta.env && import.meta.env.DEV && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .then(() => (window.caches ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key)))) : null))
+      .then(() => {
+        if (hadController) {
+          window.location.reload();
+        }
+      })
+      .catch(() => {});
+  });
+}
+
 // Only register the service worker in production builds. During local development
 // the service worker interferes with HMR / dev updates, so skip registration.
 if (import.meta.env && import.meta.env.PROD && 'serviceWorker' in navigator) {

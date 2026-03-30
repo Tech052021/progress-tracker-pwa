@@ -81,6 +81,7 @@ function migrateGoalPlan(data) {
 
   return {
     shortTermGoals: incomingGoals.map((goal) => ({
+      ...goal,
       id: goal.id || uid(),
       title: goal.title || '',
       targetValue: Number(goal.targetValue) || 0,
@@ -88,6 +89,7 @@ function migrateGoalPlan(data) {
       dueDate: goal.dueDate || ''
     })),
     actionItems: incomingActions.map((item) => ({
+      ...item,
       id: item.id || uid(),
       title: item.title || '',
       goalId: item.goalId || '',
@@ -356,6 +358,7 @@ export default function SettingsEditor({ data, setData, onClose }) {
         targetCompanies: draft.profile.targetDescriptor
       },
       goalPlan: {
+        ...prev.goalPlan,
         shortTermGoals: draft.goalPlan.shortTermGoals,
         actionItems: draft.goalPlan.actionItems
       },

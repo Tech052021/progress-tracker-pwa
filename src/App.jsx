@@ -6,6 +6,8 @@ import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
+const DATA_VERSION = 2;
+const BACKUP_KEY_PREFIX = `${STORAGE_KEY}_backup_`;
 const ISO_DATE = () => new Date().toISOString().slice(0, 10);
 
 function inferGoalUnit(goalName, weightUnit = 'lb') {
@@ -38,31 +40,11 @@ function createDefaultCategories() {
   ];
 }
 
-function isLegacySeededCategories(categories) {
-  if (!Array.isArray(categories) || categories.length !== 3) return false;
-  const byName = Object.fromEntries(categories.map((c) => [String(c.name || '').toLowerCase(), c]));
-  if (!byName.health || !byName.learning || !byName.practice) return false;
-
-  const healthGoals = (byName.health.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
-  const learningGoals = (byName.learning.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
-  const practiceGoals = (byName.practice.goals || []).map((g) => String(g.name || '').toLowerCase()).sort();
-
-  return (
-    healthGoals.join('|') === 'weight|workout' &&
-    learningGoals.join('|') === 'leetcode' &&
-    practiceGoals.join('|') === 'pool|uvm'
-  );
-}
-
 function deriveCategories(incomingCategories, weightUnit) {
   if (Array.isArray(incomingCategories)) {
-    const normalized = normalizeCategories(incomingCategories, weightUnit);
-    if (isLegacySeededCategories(normalized)) {
-      return createDefaultCategories();
-    }
-    return normalized;
+    return normalizeCategories(incomingCategories, weightUnit);
   }
-  return createDefaultCategories();
+  return [];
 }
 
 function uid() {
@@ -128,6 +110,7 @@ function isTargetGoalPeriod(period) {
 }
 
 const defaultData = {
+  dataVersion: DATA_VERSION,
   profile: {
     appName: 'Progress Tracker',
     ownerName: '',
@@ -236,6 +219,7 @@ function normalizeData(raw) {
   const profile = incoming.profile || {};
   const shortTermGoals = Array.isArray(incoming.goalPlan?.shortTermGoals)
     ? incoming.goalPlan.shortTermGoals.map((goal) => ({
+      ...goal,
       id: goal.id || uid(),
       title: goal.title || '',
       targetValue: Number(goal.targetValue) || 0,
@@ -245,6 +229,7 @@ function normalizeData(raw) {
     : [];
   const actionItems = Array.isArray(incoming.goalPlan?.actionItems)
     ? incoming.goalPlan.actionItems.map((item) => ({
+      ...item,
       id: item.id || uid(),
       title: item.title || '',
       goalId: item.goalId || '',
@@ -260,6 +245,7 @@ function normalizeData(raw) {
   return {
     ...defaultData,
     ...incoming,
+    dataVersion: DATA_VERSION,
     profile: {
       ...defaultData.profile,
       ...profile,
@@ -302,7 +288,28 @@ function useStoredData() {
   const [data, setData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? normalizeData(JSON.parse(saved)) : defaultData;
+      if (!saved) return defaultData;
+
+      const parsed = JSON.parse(saved);
+      const normalized = normalizeData(parsed);
+      const rawJson = JSON.stringify(parsed);
+      const normalizedJson = JSON.stringify(normalized);
+
+      if (rawJson !== normalizedJson) {
+        const backupKey = `${BACKUP_KEY_PREFIX}${Date.now()}`;
+        localStorage.setItem(backupKey, rawJson);
+
+        // Keep only the newest 5 automatic backups.
+        const backupKeys = Object.keys(localStorage)
+          .filter((key) => key.startsWith(BACKUP_KEY_PREFIX))
+          .sort();
+        while (backupKeys.length > 5) {
+          const keyToDelete = backupKeys.shift();
+          if (keyToDelete) localStorage.removeItem(keyToDelete);
+        }
+      }
+
+      return normalized;
     } catch {
       return defaultData;
     }
