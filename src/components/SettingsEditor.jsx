@@ -15,6 +15,30 @@ function inferGoalUnit(goalName, weightUnit = 'lb') {
   return 'count';
 }
 
+function normalizeGoalPeriod(period) {
+  const normalized = String(period || '').trim().toLowerCase().replace(/^\//, '');
+  return normalized || 'week';
+}
+
+function formatTimeToVictory(victoryDate) {
+  if (!victoryDate) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const victory = new Date(`${victoryDate}T00:00:00`);
+  const diffMs = victory - today;
+  if (diffMs < 0) return '(Past victory date)';
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const weeks = Math.floor(diffDays / 7);
+  const months = Math.floor(diffDays / 30);
+  const years = Math.floor(diffDays / 365);
+  if (diffDays === 0) return 'Victory today!';
+  if (diffDays === 1) return '1 day to victory';
+  if (weeks < 2) return `${diffDays} days to victory`;
+  if (months < 2) return `${weeks} weeks to victory`;
+  if (years < 1) return `${months} months to victory`;
+  return `${years} year${years > 1 ? 's' : ''} to victory`;
+}
+
 function migrateCategories(data) {
   const s = data.settings || {};
   const weightUnit = s.units?.weight || s.weightUnit || 'lb';
@@ -22,43 +46,17 @@ function migrateCategories(data) {
     return s.categories.map((category) => ({
       ...category,
       goals: Array.isArray(category.goals)
-        ? category.goals.map((goal) => ({ ...goal, unit: goal.unit || inferGoalUnit(goal.name, weightUnit) }))
+        ? category.goals.map((goal) => ({
+          ...goal,
+          unit: goal.unit || inferGoalUnit(goal.name, weightUnit),
+          period: normalizeGoalPeriod(goal.period)
+        }))
         : []
     }));
   }
 
-  const categories = [];
-
-  // Health
-  categories.push({
-    id: uid(),
-    name: 'Health',
-    goals: [
-      { id: uid(), name: 'Workout', target: Number(s.workoutsPerWeek || 5), period: 'week', unit: 'sessions' },
-      { id: uid(), name: 'Weight', target: s.targetWeight ? Number(s.targetWeight) : 0, period: 'target', unit: weightUnit }
-    ]
-  });
-
-  // Learning
-  categories.push({
-    id: uid(),
-    name: 'Learning',
-    goals: [
-      { id: uid(), name: 'LeetCode', target: Number(s.leetcodePerWeek || 4), period: 'week', unit: 'problems' }
-    ]
-  });
-
-  // Practice / Sports
-  categories.push({
-    id: uid(),
-    name: 'Practice',
-    goals: [
-      { id: uid(), name: 'Pool', target: Number(s.poolPracticePerWeek || 2), period: 'week', unit: 'sessions' },
-      { id: uid(), name: 'UVM', target: Number(s.uvmTopicsPerMonth || 2), period: 'month', unit: 'topics' }
-    ]
-  });
-
-  return categories;
+  // Start with empty categories for new users
+  return [];
 }
 
 function migrateProfile(data) {
@@ -144,6 +142,8 @@ export default function SettingsEditor({ data, setData, onClose }) {
   // Add-category dialog state (do not mutate categories until save)
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [pendingCategoryName, setPendingCategoryName] = useState('');
+  // Template selector state
+
   // Active category shown in the editor (tabs)
   const [activeCatId, setActiveCatId] = useState(() => {
     const initial = migrateCategories(data);
@@ -205,9 +205,11 @@ export default function SettingsEditor({ data, setData, onClose }) {
     });
   };
 
+
+
   const addGoal = (catId) => {
     const newId = uid();
-    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count' }] } : c) }));
+    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '' }] } : c) }));
     setLastAddedGoalId(newId);
   };
 
@@ -600,9 +602,10 @@ export default function SettingsEditor({ data, setData, onClose }) {
 
                     <div className="planner-columns category-columns" aria-hidden="true">
                       <span>Goal name</span>
-                      <span>Target number</span>
+                      <span>Target</span>
                       <span>Unit</span>
                       <span>Frequency</span>
+                      <span>Victory day</span>
                       <span>Action</span>
                     </div>
 
@@ -619,11 +622,20 @@ export default function SettingsEditor({ data, setData, onClose }) {
                             <input className="goal-unit" value={g.unit || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { unit: e.target.value })} placeholder="sessions / kg / pages" aria-label="Category goal unit" />
                           </div>
                           <div className="mobile-field" data-label="Frequency">
-                            <select className="goal-period" value={g.period} onChange={(e) => updateGoal(activeCat.id, g.id, { period: e.target.value })}>
-                              <option value="week">/week</option>
-                              <option value="month">/month</option>
-                              <option value="target">target</option>
-                            </select>
+                            <input
+                              className="goal-period"
+                              list="goal-period-suggestions"
+                              value={g.period || ''}
+                              onChange={(e) => updateGoal(activeCat.id, g.id, { period: normalizeGoalPeriod(e.target.value) })}
+                              placeholder="week / day / month / target"
+                              aria-label="Goal frequency period"
+                            />
+                          </div>
+                          <div className="mobile-field" data-label="Victory day (optional)">
+                            <div>
+                              <input type="date" value={g.victoryDate || ''} onChange={(e) => updateGoal(activeCat.id, g.id, { victoryDate: e.target.value })} aria-label="Goal victory day" />
+                              {g.victoryDate && <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0' }}>{formatTimeToVictory(g.victoryDate)}</p>}
+                            </div>
                           </div>
                           <div className="mobile-field" data-label="Action">
                             <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
@@ -635,6 +647,15 @@ export default function SettingsEditor({ data, setData, onClose }) {
                         <button className="secondary" onClick={() => addGoal(activeCat.id)}>Add goal</button>
                       </div>
                     </div>
+                    <datalist id="goal-period-suggestions">
+                      <option value="day" />
+                      <option value="week" />
+                      <option value="month" />
+                      <option value="year" />
+                      <option value="hour" />
+                      <option value="minute" />
+                      <option value="target" />
+                    </datalist>
                   </div>
                 ) : (
                   <div className="empty-state">
@@ -677,6 +698,8 @@ export default function SettingsEditor({ data, setData, onClose }) {
               </div>
             </div>
           )}
+
+
         </section>
       </div>
     </div>

@@ -30,4 +30,9 @@ Possible future upgrades:
 - editable categories
 - shared templates
 - admin / public template mode
+
+Product direction saved:
+- End goal is a calm 24x7 AI coach assistant that guides users conversationally and reduces manual entry.
+- Build MVP first around daily coach check-ins, suggested next actions, and weekly summaries.
+- Use roadmap in `MVP_AI_COACH_ROADMAP.md` as source of truth for tech/platform decisions.
 ---

@@ -47,6 +47,51 @@ function getMonthId(dateString = ISO_DATE()) {
   return dateString.slice(0, 7);
 }
 
+function createEntryTimestamp(dateString = ISO_DATE()) {
+  const today = ISO_DATE();
+  const normalizedDate = dateString || today;
+  const timestampDate = new Date(`${normalizedDate}T00:00:00`);
+  if (normalizedDate === today) {
+    const now = new Date();
+    timestampDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+  } else {
+    timestampDate.setHours(12, 0, 0, 0);
+  }
+  return timestampDate.toISOString();
+}
+
+function normalizeEntryList(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry) => {
+    const next = { ...entry };
+    if (!next.timestamp) {
+      next.timestamp = createEntryTimestamp(next.date || ISO_DATE());
+    }
+    return next;
+  });
+}
+
+function parseEntryTime(entry) {
+  if (entry?.timestamp) {
+    const parsed = new Date(entry.timestamp);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (entry?.date) {
+    const parsed = new Date(`${entry.date}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function normalizeGoalPeriod(period) {
+  const normalized = String(period || '').trim().toLowerCase().replace(/^\//, '');
+  return normalized || 'week';
+}
+
+function isTargetGoalPeriod(period) {
+  return normalizeGoalPeriod(period) === 'target';
+}
+
 const defaultData = {
   profile: {
     appName: 'Progress Tracker',
@@ -209,7 +254,12 @@ function normalizeData(raw) {
     },
     entries: {
       ...defaultData.entries,
-      ...(incoming.entries || {})
+      ...Object.fromEntries(
+        Object.entries({ ...defaultData.entries, ...(incoming.entries || {}) }).map(([bucket, entries]) => [
+          bucket,
+          normalizeEntryList(entries)
+        ])
+      )
     }
   };
 }
@@ -246,11 +296,12 @@ function App() {
   useEffect(() => { setCatLogOpen(null); }, [tab, catTab]);
 
   const addEntry = (bucket, entry) => {
+    const timestamp = entry.timestamp || createEntryTimestamp(entry.date);
     setData((prev) => ({
       ...prev,
       entries: {
         ...prev.entries,
-        [bucket]: [{ id: crypto.randomUUID(), ...entry }, ...prev.entries[bucket]]
+        [bucket]: [{ id: crypto.randomUUID(), ...entry, timestamp }, ...prev.entries[bucket]]
       }
     }));
   };
@@ -267,6 +318,8 @@ function App() {
 
   const currentWeek = getWeekId(ISO_DATE());
   const currentMonth = getMonthId();
+  const currentYear = ISO_DATE().slice(0, 4);
+  const nowMs = Date.now();
   const weightUnit = data.settings?.units?.weight || 'lb';
   const durationUnit = data.settings?.units?.duration || 'min';
 
@@ -307,6 +360,7 @@ function App() {
   const weeklyActivityCount = getRecentActivityCount(data.entries, today, 7);
   const todayProgressPct = Math.min(100, Math.round((todayActivityCount / dailyTarget) * 100));
   const remainingToday = Math.max(0, dailyTarget - todayActivityCount);
+  const totalActivityCount = countAllEntries(data.entries);
 
   const shortTermGoals = data.goalPlan?.shortTermGoals || [];
   const actionItems = data.goalPlan?.actionItems || [];
@@ -318,6 +372,10 @@ function App() {
       return sum + Math.min(1, goal.currentValue / goal.targetValue);
     }, 0) / shortTermGoals.length * 100)
     : 0;
+  const experiencePoints = (totalActivityCount * 10) + (completedActionItems * 25) + (activityStreakDays * 5);
+  const userLevel = Math.max(1, Math.floor(experiencePoints / 250) + 1);
+  const levelProgress = experiencePoints % 250;
+  const xpToNextLevel = 250 - levelProgress;
 
   const weightSeries = useMemo(() => {
     return [...data.entries.weights]
@@ -377,7 +435,7 @@ function App() {
           };
         })
       )
-      .filter((goal) => goal.period !== 'target' && goal.target > 0)
+      .filter((goal) => !isTargetGoalPeriod(goal.period) && goal.target > 0)
       .sort((a, b) => {
         const aDone = a.remaining <= 0 ? 1 : 0;
         const bDone = b.remaining <= 0 ? 1 : 0;
@@ -393,10 +451,50 @@ function App() {
       ? 'One more action and today is a win.'
       : `${remainingToday} actions left to complete today.`;
 
+  const achievements = [
+    { id: 'first-log', label: 'First Step', hint: 'Create your first log entry', unlocked: totalActivityCount >= 1 },
+    { id: 'streak-3', label: '3-Day Streak', hint: 'Stay active for 3 days in a row', unlocked: activityStreakDays >= 3 },
+    { id: 'streak-7', label: 'Consistency Pro', hint: 'Maintain a 7-day streak', unlocked: activityStreakDays >= 7 },
+    { id: 'logs-100', label: '100 Logs Club', hint: 'Reach 100 total logged actions', unlocked: totalActivityCount >= 100 },
+    { id: 'actions-10', label: 'Execution Engine', hint: 'Complete 10 action items', unlocked: completedActionItems >= 10 }
+  ];
+  const unlockedAchievements = achievements.filter((a) => a.unlocked).length;
+  const dailyMessages = [
+    'Small daily wins beat occasional big efforts.',
+    'Your future self is built by what you do today.',
+    'Consistency compounds faster than motivation.',
+    'Focus on progress, not perfection.',
+    'Do the next right action and momentum will follow.'
+  ];
+  const messageOfTheDay = dailyMessages[Math.abs(today.split('-').join('').split('').reduce((sum, n) => sum + Number(n), 0)) % dailyMessages.length];
+
   const formatGoalUnit = (goal) => {
     const unit = String(goal.unit || '').trim();
     if (!unit || unit === 'count') return '';
     return ` ${unit}`;
+  };
+
+  const formatGoalPeriodForCard = (period) => {
+    const normalized = normalizeGoalPeriod(period);
+    if (normalized === 'week') return ' this week';
+    if (normalized === 'month') return ' this month';
+    if (normalized === 'day') return ' today';
+    if (normalized === 'hour') return ' last hour';
+    if (normalized === 'minute') return ' last minute';
+    if (normalized === 'year') return ' this year';
+    if (normalized === 'target') return '';
+    return ` per ${normalized}`;
+  };
+
+  const formatGoalWindowLabel = (period) => {
+    const normalized = normalizeGoalPeriod(period);
+    if (normalized === 'month') return 'This month';
+    if (normalized === 'day') return 'Today';
+    if (normalized === 'hour') return 'Last hour';
+    if (normalized === 'minute') return 'Last minute';
+    if (normalized === 'year') return 'This year';
+    if (normalized === 'week') return 'This week';
+    return 'Current period';
   };
 
   function mapGoalToBucket(goalName) {
@@ -415,9 +513,24 @@ function App() {
   function goalCount(goal) {
     const bucket = mapGoalToBucket(goal.name);
     if (!bucket) return 0;
+    const period = normalizeGoalPeriod(goal.period);
     return data.entries[bucket]?.filter((x) => {
-      // Count by week/month depending on period
-      if (goal.period === 'month') return x.date.startsWith(currentMonth);
+      if (period === 'target') return false;
+      if (period === 'month') return x.date.startsWith(currentMonth);
+      if (period === 'year') return x.date.startsWith(currentYear);
+      if (period === 'day') return x.date === today;
+      if (period === 'hour') {
+        const entryTime = parseEntryTime(x);
+        if (!entryTime) return false;
+        const diff = nowMs - entryTime.getTime();
+        return diff >= 0 && diff < 60 * 60 * 1000;
+      }
+      if (period === 'minute') {
+        const entryTime = parseEntryTime(x);
+        if (!entryTime) return false;
+        const diff = nowMs - entryTime.getTime();
+        return diff >= 0 && diff < 60 * 1000;
+      }
       return getWeekId(x.date) === currentWeek;
     }).length || 0;
   }
@@ -438,7 +551,7 @@ function App() {
     const text = await file.text();
     try {
       const parsed = JSON.parse(text);
-      setData(parsed);
+      setData(normalizeData(parsed));
       alert('Backup imported successfully.');
     } catch {
       alert('Could not import that file. Please use a valid backup JSON.');
@@ -483,7 +596,12 @@ function App() {
       <section className="card-grid metrics-grid">
         {/** render top goals from categories as metric cards */}
         {normalizedCategories.flatMap(c => c.goals).slice(0, 5).map((g) => (
-          <MetricCard key={g.id} title={`${g.name}${g.period === 'week' ? ' this week' : g.period === 'month' ? ' this month' : ''}`} value={g.period === 'target' ? formatGoalValue(g.target, g.unit) : goalCount(g)} subtitle={g.period === 'target' ? (g.target ? `Target ${formatGoalValue(g.target, g.unit)}` : 'Set target in Settings') : `Goal ${g.target}${formatGoalUnit(g)}`} />
+          <MetricCard
+            key={g.id}
+            title={`${g.name}${formatGoalPeriodForCard(g.period)}`}
+            value={isTargetGoalPeriod(g.period) ? formatGoalValue(g.target, g.unit) : goalCount(g)}
+            subtitle={isTargetGoalPeriod(g.period) ? (g.target ? `Target ${formatGoalValue(g.target, g.unit)}` : 'Set target in Settings') : `Goal ${g.target}${formatGoalUnit(g)}`}
+          />
         ))}
       </section>
 
@@ -510,6 +628,15 @@ function App() {
                   <h2>Today momentum</h2>
                   <p>Clear daily target and streak to keep you consistent.</p>
                 </div>
+                {todayActivityCount >= dailyTarget && (
+                  <div className="momentum-burst" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
                 <div className="momentum-header">
                   <div>
                     <p className="momentum-kicker">Daily target</p>
@@ -555,7 +682,7 @@ function App() {
                       <article className="entry-card" key={goal.id}>
                         <div className="entry-top">
                           <span className="chip">{goal.category}</span>
-                          <span className="entry-date">{goal.period === 'month' ? 'This month' : 'This week'}</span>
+                          <span className="entry-date">{formatGoalWindowLabel(goal.period)}</span>
                         </div>
                         <h4>{goal.name}</h4>
                         <p>
@@ -568,6 +695,29 @@ function App() {
                 ) : (
                   <div className="empty-state">Add goals in Settings to get personalized priorities.</div>
                 )}
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>Progress game</h2>
+                  <p>Level up through consistency and completed actions.</p>
+                </div>
+                <div className="snapshot-row"><span>Level</span><strong>{userLevel}</strong></div>
+                <div className="snapshot-row"><span>XP</span><strong>{experiencePoints}</strong></div>
+                <div className="snapshot-row"><span>Achievements</span><strong>{unlockedAchievements}/{achievements.length}</strong></div>
+                <div style={{ marginTop: 10 }}>
+                  <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.round((levelProgress / 250) * 100)}%` }} /></div>
+                  <p className="helper-text" style={{ marginBottom: 0 }}>{xpToNextLevel} XP to level {userLevel + 1}</p>
+                </div>
+                <div className="achievement-grid" style={{ marginTop: 10 }}>
+                  {achievements.map((item) => (
+                    <div key={item.id} className={item.unlocked ? 'achievement-chip unlocked' : 'achievement-chip'}>
+                      <strong>{item.label}</strong>
+                      <span>{item.hint}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="note-box" style={{ marginTop: 12 }}>{messageOfTheDay}</div>
               </section>
             </section>
           )}
@@ -760,10 +910,16 @@ function mergeEntries(groups) {
       label,
       id: entry.id,
       date: entry.date,
+      timestamp: entry.timestamp,
       title: entry.title || entry.topic || entry.problem || entry.question || entry.summary || entry.label || `${label} entry`,
       details: entry.details || entry.notes || ''
     })))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => {
+      const aTime = parseEntryTime(a);
+      const bTime = parseEntryTime(b);
+      if (aTime && bTime) return bTime.getTime() - aTime.getTime();
+      return b.date.localeCompare(a.date);
+    });
 }
 
 function MetricCard({ title, value, subtitle }) {
@@ -1111,6 +1267,14 @@ function getRecentActivityCount(entriesByBucket, anchorDateString, days = 7) {
   return Object.values(entriesByBucket).reduce((sum, list) => {
     if (!Array.isArray(list)) return sum;
     return sum + list.filter((item) => item?.date && dates.has(item.date)).length;
+  }, 0);
+}
+
+function countAllEntries(entriesByBucket) {
+  if (!entriesByBucket) return 0;
+  return Object.values(entriesByBucket).reduce((sum, list) => {
+    if (!Array.isArray(list)) return sum;
+    return sum + list.length;
   }, 0);
 }
 
