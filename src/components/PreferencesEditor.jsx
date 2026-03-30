@@ -55,7 +55,7 @@ export default function PreferencesEditor({ data, setData, onClose }) {
               </label>
             </div>
             <p className="helper-text" style={{ marginBottom: 0 }}>
-              Goal editing and planning now live in the Goals workspace. Backup import/export remains available in the header.
+              Goal editing and planning now live in the Goals workspace. Backup import/export lives at the bottom of Settings.
             </p>
           </div>
 

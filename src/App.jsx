@@ -1,7 +1,7 @@
 import * as React from 'react';
 // ensure `React` is available at runtime for any classic-jsx compiled code
 try { window.React = React; } catch (e) { /* noop on non-browser */ }
-const { useEffect, useMemo, useRef, useState } = React;
+const { useEffect, useMemo, useState } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 
@@ -151,6 +151,7 @@ const defaultData = {
     mentor: [],
     bugs: [],
     pool: [],
+    goalUpdates: [],
     weeklyNotes: []
   }
 };
@@ -328,7 +329,10 @@ function App() {
   const [dashLogOpen, setDashLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeGoalCategoryId, setActiveGoalCategoryId] = useState(null);
-  const fileInputRef = useRef(null);
+  const [roadmapView, setRoadmapView] = useState('roadmap');
+  const [progressView, setProgressView] = useState('goals');
+  const [logView, setLogView] = useState('capture');
+  const [goalUpdateDrafts, setGoalUpdateDrafts] = useState({});
 
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
@@ -441,6 +445,87 @@ function App() {
 
   const activeGoalCategory = normalizedCategories.find((category) => category.id === activeGoalCategoryId) || normalizedCategories[0] || null;
 
+  const categoryKeywordMap = useMemo(() => {
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'from', 'this', 'that', 'your', 'goal', 'goals', 'item', 'items', 'short', 'term', 'next', 'first']);
+    const tokenize = (value) => String(value || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+
+    return normalizedCategories.map((category) => {
+      const keywordSet = new Set(tokenize(category.name));
+      (category.goals || []).forEach((goal) => tokenize(goal.name).forEach((token) => {
+        if (!stopWords.has(token) && token.length > 2) keywordSet.add(token);
+      }));
+      return { categoryId: category.id, categoryName: category.name, keywords: keywordSet };
+    });
+  }, [normalizedCategories]);
+
+  const inferCategoryIdFromText = (value) => {
+    const tokens = String(value || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+    let bestCategoryId = null;
+    let bestScore = 0;
+    categoryKeywordMap.forEach((entry) => {
+      const score = tokens.reduce((sum, token) => sum + (entry.keywords.has(token) ? 1 : 0), 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCategoryId = entry.categoryId;
+      }
+    });
+    return bestCategoryId;
+  };
+
+  const shortTermGoalCategoryIdByGoalId = useMemo(() => {
+    const resolved = {};
+    shortTermGoals.forEach((goal) => {
+      const explicitId = goal.categoryId && normalizedCategories.some((category) => category.id === goal.categoryId)
+        ? goal.categoryId
+        : null;
+
+      const explicitByName = goal.categoryName
+        ? normalizedCategories.find((category) => category.name.trim().toLowerCase() === String(goal.categoryName).trim().toLowerCase())?.id
+        : null;
+
+      const inferred = inferCategoryIdFromText(goal.title || goal.name || '');
+      resolved[goal.id] = explicitId || explicitByName || inferred || null;
+    });
+    return resolved;
+  }, [shortTermGoals, normalizedCategories, categoryKeywordMap]);
+
+  const filteredRoadmapGoals = useMemo(() => {
+    if (!activeGoalCategory) return shortTermGoals;
+    return shortTermGoals.filter((goal) => shortTermGoalCategoryIdByGoalId[goal.id] === activeGoalCategory.id);
+  }, [shortTermGoals, activeGoalCategory, shortTermGoalCategoryIdByGoalId]);
+
+  const filteredRoadmapActions = useMemo(() => {
+    if (!activeGoalCategory) return actionItems;
+
+    return actionItems.filter((item) => {
+      const explicitId = item.categoryId && normalizedCategories.some((category) => category.id === item.categoryId)
+        ? item.categoryId
+        : null;
+      const explicitByName = item.categoryName
+        ? normalizedCategories.find((category) => category.name.trim().toLowerCase() === String(item.categoryName).trim().toLowerCase())?.id
+        : null;
+      const inferredFromGoal = item.goalId ? shortTermGoalCategoryIdByGoalId[item.goalId] : null;
+      const inferredFromText = inferCategoryIdFromText(item.title || '');
+      const resolvedCategoryId = explicitId || explicitByName || inferredFromGoal || inferredFromText || null;
+      return resolvedCategoryId === activeGoalCategory.id;
+    });
+  }, [actionItems, activeGoalCategory, normalizedCategories, shortTermGoalCategoryIdByGoalId, categoryKeywordMap]);
+
+  const activeCategoryCompletedActions = useMemo(
+    () => filteredRoadmapActions.filter((item) => item.status === 'done').length,
+    [filteredRoadmapActions]
+  );
+
+  const activeCategoryAverageGoalProgress = useMemo(() => {
+    if (!filteredRoadmapGoals.length) return 0;
+    const total = filteredRoadmapGoals.reduce((sum, goal) => {
+      const target = Math.max(1, Number(goal.targetValue) || 0);
+      const current = Number(goal.currentValue) || 0;
+      return sum + Math.min(100, Math.round((current / target) * 100));
+    }, 0);
+    return Math.round(total / filteredRoadmapGoals.length);
+  }, [filteredRoadmapGoals]);
+
   const focusGoals = useMemo(() => {
     return normalizedCategories
       .flatMap((category) =>
@@ -534,30 +619,58 @@ function App() {
     return null;
   }
 
+  function isEntryInGoalPeriod(entry, period) {
+    if (!entry) return false;
+    if (period === 'target') return false;
+    if (period === 'month') return String(entry.date || '').startsWith(currentMonth);
+    if (period === 'year') return String(entry.date || '').startsWith(currentYear);
+    if (period === 'day') return entry.date === today;
+    if (period === 'hour') {
+      const entryTime = parseEntryTime(entry);
+      if (!entryTime) return false;
+      const diff = nowMs - entryTime.getTime();
+      return diff >= 0 && diff < 60 * 60 * 1000;
+    }
+    if (period === 'minute') {
+      const entryTime = parseEntryTime(entry);
+      if (!entryTime) return false;
+      const diff = nowMs - entryTime.getTime();
+      return diff >= 0 && diff < 60 * 1000;
+    }
+    return getWeekId(entry.date) === currentWeek;
+  }
+
   function goalCount(goal) {
     const bucket = mapGoalToBucket(goal.name);
-    if (!bucket) return 0;
     const period = normalizeGoalPeriod(goal.period);
-    return data.entries[bucket]?.filter((x) => {
-      if (period === 'target') return false;
-      if (period === 'month') return x.date.startsWith(currentMonth);
-      if (period === 'year') return x.date.startsWith(currentYear);
-      if (period === 'day') return x.date === today;
-      if (period === 'hour') {
-        const entryTime = parseEntryTime(x);
-        if (!entryTime) return false;
-        const diff = nowMs - entryTime.getTime();
-        return diff >= 0 && diff < 60 * 60 * 1000;
-      }
-      if (period === 'minute') {
-        const entryTime = parseEntryTime(x);
-        if (!entryTime) return false;
-        const diff = nowMs - entryTime.getTime();
-        return diff >= 0 && diff < 60 * 1000;
-      }
-      return getWeekId(x.date) === currentWeek;
-    }).length || 0;
+    const bucketCount = bucket
+      ? (data.entries[bucket]?.filter((entry) => isEntryInGoalPeriod(entry, period)).length || 0)
+      : 0;
+
+    const manualCount = data.entries.goalUpdates?.filter((entry) => {
+      const byId = entry.goalId && entry.goalId === goal.id;
+      const byName = String(entry.goalName || '').trim().toLowerCase() === String(goal.name || '').trim().toLowerCase();
+      return (byId || byName) && isEntryInGoalPeriod(entry, period);
+    }).reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0) || 0;
+
+    return bucketCount + manualCount;
   }
+
+  const recordGoalProgress = (goal, rawAmount) => {
+    const parsed = Number(rawAmount);
+    const amount = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    if (!amount) return;
+
+    addEntry('goalUpdates', {
+      date: today,
+      goalId: goal.id,
+      goalName: goal.name,
+      amount,
+      unit: goal.unit || 'count'
+    });
+
+    setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: '1' }));
+  };
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -596,6 +709,9 @@ function App() {
   const activeAreaGoals = activeGoalCategory?.goals || [];
   const activeAreaTrackableGoals = activeAreaGoals.filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
   const activeAreaCompleted = activeAreaTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
+  const activeAreaCompletionRate = activeAreaTrackableGoals.length
+    ? Math.round((activeAreaCompleted / activeAreaTrackableGoals.length) * 100)
+    : 0;
 
   let tabBadges = [];
   if (tab === 'goals') {
@@ -671,9 +787,6 @@ function App() {
           )}
         </div>
         <div className="hero-actions">
-          <button className="primary" onClick={exportData}>Export backup</button>
-          <button className="secondary" onClick={() => fileInputRef.current?.click()}>Import backup</button>
-          <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={importData} />
           <Clock />
           <button className="secondary settings-btn" onClick={() => setShowSettings(s => !s)}>{showSettings ? 'Close settings' : 'Settings'}</button>
         </div>
@@ -744,211 +857,367 @@ function App() {
       )}
 
       {tab === 'goals' && (
-        <section className="card-grid two-up">
-          <section className="card">
-            <div className="card-head">
-              <h2>Goals workspace</h2>
-              <p>Pick a focus area, review live progress, and open the goal editor when you need to restructure.</p>
-            </div>
-            <div className="tabs" role="tablist" aria-label="Goal categories">
-              {normalizedCategories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
-                  onClick={() => setActiveGoalCategoryId(category.id)}
-                >
-                  {category.name}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-              <button className="primary" onClick={() => setShowSettings(true)}>Open goals editor</button>
-              <button className="secondary" onClick={() => setTab('log')}>Go to log</button>
-            </div>
-            {activeGoalCategory ? (
-              <div style={{ marginTop: 16 }}>
-                <div className="snapshot-row"><span>Focus area</span><strong>{activeGoalCategory.name}</strong></div>
-                <div className="snapshot-row"><span>Tracked goals</span><strong>{activeGoalCategory.goals.length}</strong></div>
-                {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
-                  <div key={goal.id} style={{ marginTop: 12 }}>
-                    <ProgressRow label={goal.name} value={isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal)} target={goal.target} unit={goal.unit} />
-                  </div>
-                )) : <div className="empty-state" style={{ marginTop: 12 }}>Use the goals editor to add goals to this focus area.</div>}
-              </div>
-            ) : (
-              <div className="empty-state" style={{ marginTop: 12 }}>No focus areas yet.</div>
-            )}
-          </section>
+        <section className="card-grid">
+          <section className="card goals-touch-panel">
+            <div className="goals-touch-top">
+              <div className="goal-category-strip" role="tablist" aria-label="Goal categories">
+                {normalizedCategories.map((category) => {
+                  const categoryTrackableGoals = (category.goals || []).filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
+                  const categoryCompletedGoals = categoryTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
 
-          <section className="card">
-            <div className="card-head">
-              <h2>What next</h2>
-              <p>Use this workspace to edit your goals, then review timeline details in the Roadmap tab.</p>
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={activeGoalCategory?.id === category.id ? 'goal-category-pill active' : 'goal-category-pill'}
+                      onClick={() => setActiveGoalCategoryId(category.id)}
+                    >
+                      <span>{category.name}</span>
+                      <small>{category.goals.length} goals</small>
+                      <small>{categoryCompletedGoals}/{categoryTrackableGoals.length || 0} on pace</small>
+                    </button>
+                  );
+                })}
+              </div>
+              <button className="secondary goal-editor-btn" onClick={() => setShowSettings(true)}>Edit goals</button>
             </div>
-            <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
-            <div className="snapshot-row"><span>Action items</span><strong>{actionItems.length}</strong></div>
-            <div className="snapshot-row"><span>Completed actions</span><strong>{completedActionItems}</strong></div>
-            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="primary" onClick={() => setTab('roadmap')}>Open roadmap</button>
-              <button className="secondary" onClick={() => setTab('progress')}>Open analytics</button>
-            </div>
+
+            {activeGoalCategory ? (
+              <>
+                <div className="goal-focus-banner compact">
+                  <h3>{activeGoalCategory.name}</h3>
+                  <div className="goal-focus-stats compact">
+                    <div className="goal-focus-stat">
+                      <span>Goals</span>
+                      <strong>{activeAreaGoals.length}</strong>
+                    </div>
+                    <div className="goal-focus-stat">
+                      <span>On pace</span>
+                      <strong>{activeAreaCompleted}</strong>
+                    </div>
+                    <div className="goal-focus-stat">
+                      <span>Rate</span>
+                      <strong>{activeAreaCompletionRate}%</strong>
+                    </div>
+                    <div className="goal-focus-stat">
+                      <span>Short-term</span>
+                      <strong>{shortTermGoals.length}</strong>
+                    </div>
+                    <div className="goal-focus-stat">
+                      <span>Actions</span>
+                      <strong>{actionItems.length}</strong>
+                    </div>
+                    <div className="goal-focus-stat">
+                      <span>Done</span>
+                      <strong>{completedActionItems}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {activeAreaGoals.length ? (
+                  <div className="goal-detail-list">
+                    {activeAreaGoals.map((goal) => {
+                      const currentValue = isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal);
+                      const targetValue = Number(goal.target || 0);
+                      const isComplete = !isTargetGoalPeriod(goal.period) && targetValue > 0 && currentValue >= targetValue;
+                      const remaining = Math.max(0, targetValue - currentValue);
+
+                      return (
+                        <article className="goal-detail-card" key={goal.id}>
+                          <div className="goal-detail-top">
+                            <h4>{goal.name}</h4>
+                            <span className={isComplete ? 'goal-status-pill done' : 'goal-status-pill'}>
+                              {isTargetGoalPeriod(goal.period) ? 'Milestone' : isComplete ? 'On pace' : `${remaining} left`}
+                            </span>
+                          </div>
+
+                          {isTargetGoalPeriod(goal.period) ? (
+                            <div className="goal-outcome-grid">
+                              <div className="goal-outcome-cell">
+                                <span>Target</span>
+                                <strong>{targetValue || 'Not set'} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}</strong>
+                              </div>
+                              <div className="goal-outcome-cell">
+                                <span>Victory</span>
+                                <strong>{goal.victoryDate || 'Not set'}</strong>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <ProgressRow label={goal.name} value={currentValue} target={targetValue} unit={goal.unit} />
+                              <div className="goal-progress-capture">
+                                <div className="goal-progress-capture-meta">Update what you completed for this goal</div>
+                                <div className="goal-progress-capture-actions">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    value={goalUpdateDrafts[goal.id] ?? '1'}
+                                    onChange={(e) => setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: e.target.value }))}
+                                    aria-label={`Progress amount for ${goal.name}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="secondary"
+                                    onClick={() => recordGoalProgress(goal, goalUpdateDrafts[goal.id] ?? '1')}
+                                  >
+                                    Add progress
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty-state" style={{ marginTop: 16 }}>No goals yet.</div>
+                )}
+              </>
+            ) : (
+              <div className="empty-state" style={{ marginTop: 16 }}>No focus areas yet.</div>
+            )}
           </section>
         </section>
       )}
 
       {tab === 'roadmap' && (
-        <section className="card-grid two-up">
-          <section className="card">
-            <div className="card-head">
-              <h2>Roadmap</h2>
-              <p>Upcoming short-term goals and action items in one timeline view.</p>
+        <section className="card-grid">
+          <section className="card roadmap-single-scroll">
+            <div className="dash-sub-tabs at-top" role="tablist" aria-label="Roadmap views">
+              <button
+                type="button"
+                className={roadmapView === 'roadmap' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setRoadmapView('roadmap')}
+              >
+                Roadmap
+              </button>
+              <button
+                type="button"
+                className={roadmapView === 'history' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setRoadmapView('history')}
+              >
+                Recent history
+              </button>
             </div>
-            <RoadmapList goals={shortTermGoals} actions={actionItems} />
-          </section>
 
-          <section className="card">
-            <div className="card-head">
-              <h2>Recent history</h2>
-              <p>Click through categories to inspect recent activity details.</p>
-            </div>
-            <div className="tabs" role="tablist" aria-label="Roadmap history categories">
-              {normalizedCategories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
-                  onClick={() => setActiveGoalCategoryId(category.id)}
-                >
-                  {category.name}
-                </button>
-              ))}
-            </div>
-            {activeGoalCategory ? (
-              <div style={{ marginTop: 14 }}>
-                <EntryList
-                  items={mergeEntries(activeGoalCategory.goals.map((goal) => {
-                    const bucket = mapGoalToBucket(goal.name);
-                    return [bucket || 'unknown', data.entries[bucket] || [], goal.name];
-                  }))}
-                  onDelete={removeEntry}
-                />
-              </div>
+            {roadmapView === 'roadmap' ? (
+              <>
+                <div className="tabs category-tabs" role="tablist" aria-label="Roadmap categories">
+                  {normalizedCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                      onClick={() => setActiveGoalCategoryId(category.id)}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+                {activeGoalCategory ? (
+                  <div style={{ marginTop: 14 }}>
+                    <RoadmapList goals={filteredRoadmapGoals} actions={filteredRoadmapActions} />
+                  </div>
+                ) : (
+                  <div className="empty-state">No categories configured yet.</div>
+                )}
+              </>
             ) : (
-              <div className="empty-state">No categories configured yet.</div>
+              <>
+                <div className="tabs category-tabs" role="tablist" aria-label="Roadmap history categories">
+                  {normalizedCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                      onClick={() => setActiveGoalCategoryId(category.id)}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+                {activeGoalCategory ? (
+                  <div className="roadmap-history-content" style={{ marginTop: 14 }}>
+                    <EntryList
+                      items={mergeEntries(activeGoalCategory.goals.map((goal) => {
+                        const bucket = mapGoalToBucket(goal.name);
+                        return [bucket || 'unknown', data.entries[bucket] || [], goal.name];
+                      }))}
+                      onDelete={removeEntry}
+                    />
+                  </div>
+                ) : (
+                  <div className="empty-state">No categories configured yet.</div>
+                )}
+              </>
             )}
           </section>
         </section>
       )}
 
       {tab === 'progress' && (
-        <section className="card-grid two-up">
+        <section className="card-grid">
           <section className="card">
-            <div className="card-head">
-              <h2>Goal progress</h2>
-              <p>Overall analytics for the current week and month.</p>
+            <div className="dash-sub-tabs at-top" role="tablist" aria-label="Progress views">
+              <button
+                type="button"
+                className={progressView === 'goals' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setProgressView('goals')}
+              >
+                Goal progress
+              </button>
+              <button
+                type="button"
+                className={progressView === 'category' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setProgressView('category')}
+              >
+                Category analysis
+              </button>
             </div>
-            <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
-            <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
-            <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
-            <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
-            <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
-            <div className="snapshot-row"><span>Action items complete</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
-            <div className="snapshot-row"><span>Average short-term progress</span><strong>{averageGoalProgress}%</strong></div>
-          </section>
 
-          <section className="card">
-            <div className="card-head">
-              <h2>Category analytics</h2>
-              <p>Click through categories to inspect goals and progress.</p>
-            </div>
-            <div className="tabs" role="tablist" aria-label="Analytics categories">
-              {normalizedCategories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
-                  onClick={() => setActiveGoalCategoryId(category.id)}
-                >
-                  {category.name}
-                </button>
-              ))}
-            </div>
-            {activeGoalCategory ? (
-              <div style={{ marginTop: 14 }}>
-                <div className="snapshot-row"><span>Goals in category</span><strong>{activeGoalCategory.goals.length}</strong></div>
-                {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
-                  <div key={goal.id} style={{ marginTop: 10 }}>
-                    <ProgressRow
-                      label={goal.name}
-                      value={isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal)}
-                      target={Number(goal.target) || 0}
-                      unit={goal.unit}
-                    />
+            {progressView === 'goals' ? (
+              <>
+                <div className="tabs category-tabs" role="tablist" aria-label="Goal progress categories">
+                  {normalizedCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                      onClick={() => setActiveGoalCategoryId(category.id)}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+                {activeGoalCategory ? (
+                  <div style={{ marginTop: 14 }}>
+                    {activeAreaTrackableGoals.length ? activeAreaTrackableGoals.map((goal) => (
+                      <div key={goal.id} style={{ marginTop: 10 }}>
+                        <ProgressRow
+                          label={goal.name}
+                          value={goalCount(goal)}
+                          target={Number(goal.target) || 0}
+                          unit={goal.unit}
+                        />
+                      </div>
+                    )) : <div className="empty-state" style={{ marginTop: 10 }}>No measurable period goals in this category yet.</div>}
+                    <div className="snapshot-row"><span>Action items complete</span><strong>{activeCategoryCompletedActions}/{filteredRoadmapActions.length}</strong></div>
+                    <div className="snapshot-row"><span>Average short-term progress</span><strong>{activeCategoryAverageGoalProgress}%</strong></div>
                   </div>
-                )) : <div className="empty-state" style={{ marginTop: 10 }}>No goals in this category yet.</div>}
-              </div>
+                ) : (
+                  <div className="empty-state">No categories configured yet.</div>
+                )}
+              </>
             ) : (
-              <div className="empty-state">No categories configured yet.</div>
+              <>
+                <div className="tabs category-tabs" role="tablist" aria-label="Analytics categories">
+                  {normalizedCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                      onClick={() => setActiveGoalCategoryId(category.id)}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+                {activeGoalCategory ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="snapshot-row"><span>Goals in category</span><strong>{activeGoalCategory.goals.length}</strong></div>
+                    {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
+                      <div key={goal.id} style={{ marginTop: 10 }}>
+                        <ProgressRow
+                          label={goal.name}
+                          value={isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal)}
+                          target={Number(goal.target) || 0}
+                          unit={goal.unit}
+                        />
+                      </div>
+                    )) : <div className="empty-state" style={{ marginTop: 10 }}>No goals in this category yet.</div>}
+                  </div>
+                ) : (
+                  <div className="empty-state">No categories configured yet.</div>
+                )}
+              </>
             )}
           </section>
         </section>
       )}
 
       {tab === 'log' && (
-        <section className="card-grid two-up">
+        <section className="card-grid">
           <section className="card">
-            <div className="card-head">
-              <h2>Weight trend</h2>
-              <p>Simple built-in chart ({weightUnit})</p>
+            <div className="dash-sub-tabs at-top" role="tablist" aria-label="Log views">
+              <button
+                type="button"
+                className={logView === 'capture' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setLogView('capture')}
+              >
+                Capture
+              </button>
+              <button
+                type="button"
+                className={logView === 'trend' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setLogView('trend')}
+              >
+                Weight trend
+              </button>
             </div>
-            <MiniLineChart data={weightSeries} />
-          </section>
 
-          <section className="card">
-            <div className="card-head">
-              <h2>Daily reminder</h2>
-              <p>Your minimum successful day</p>
-            </div>
-            <div className="note-box">{data.reminders.todayMustWin}</div>
-            {(() => {
-              const allNames = normalizedCategories.flatMap(c => c.goals.map(g => g.name.toLowerCase()));
-              const has = (kw) => allNames.some(n => n.includes(kw));
-              const close = () => setDashLogOpen(null);
-              const available = [
-                has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
-                has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
-                has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
-                has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
-                has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
-                has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
-                has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
-                has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
-              ].filter(Boolean);
-              if (available.length === 0) return <div className="empty-state">No goals configured yet. Open Goals to define what should be tracked.</div>;
-              const openItem = available.find(a => a.key === dashLogOpen);
-              return (
-                <>
-                  <div className="log-form-tabs">
-                    {available.map(({ key, label }) => (
-                      <button key={key} type="button"
-                        className={dashLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
-                        onClick={() => setDashLogOpen(dashLogOpen === key ? null : key)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {openItem?.key === 'pool' && <div className="note-box">{data.reminders.preShotRoutine}</div>}
-                  {openItem && <div className="log-form-body">{openItem.form}</div>}
-                </>
-              );
-            })()}
+            {logView === 'trend' ? (
+              <MiniLineChart data={weightSeries} />
+            ) : (
+              <>
+                <div className="note-box">{data.reminders.todayMustWin}</div>
+                {(() => {
+                  const allNames = normalizedCategories.flatMap(c => c.goals.map(g => g.name.toLowerCase()));
+                  const has = (kw) => allNames.some(n => n.includes(kw));
+                  const close = () => setDashLogOpen(null);
+                  const available = [
+                    has('workout') && { key: 'workout', label: 'Workout', form: <WorkoutForm onSave={(e) => { addEntry('workouts', e); close(); }} durationUnit={durationUnit} /> },
+                    has('weight')  && { key: 'weight',  label: 'Weight',  form: <WeightForm  onSave={(e) => { addEntry('weights', e);  close(); }} weightUnit={weightUnit} /> },
+                    has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
+                    has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
+                    has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
+                    has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
+                    has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
+                    has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
+                  ].filter(Boolean);
+                  if (available.length === 0) return <div className="empty-state">No goals configured yet. Open Goals to define what should be tracked.</div>;
+                  const openItem = available.find(a => a.key === dashLogOpen);
+                  return (
+                    <>
+                      <div className="log-form-tabs">
+                        {available.map(({ key, label }) => (
+                          <button key={key} type="button"
+                            className={dashLogOpen === key ? 'log-form-tab active' : 'log-form-tab'}
+                            onClick={() => setDashLogOpen(dashLogOpen === key ? null : key)}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {openItem?.key === 'pool' && <div className="note-box">{data.reminders.preShotRoutine}</div>}
+                      {openItem && <div className="log-form-body">{openItem.form}</div>}
+                    </>
+                  );
+                })()}
+              </>
+            )}
           </section>
         </section>
       )}
 
       {showSettings && (
-        <SettingsEditor data={data} setData={setData} onClose={() => setShowSettings(false)} />
+        <SettingsEditor
+          data={data}
+          setData={setData}
+          onClose={() => setShowSettings(false)}
+          onExportData={exportData}
+          onImportData={importData}
+        />
       )}
     </div>
   );

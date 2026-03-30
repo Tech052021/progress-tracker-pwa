@@ -234,7 +234,7 @@ function getWeeksUntilTargetDate(targetDate) {
 }
 
 
-export default function SettingsEditor({ data, setData, onClose }) {
+export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData }) {
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
@@ -248,6 +248,7 @@ export default function SettingsEditor({ data, setData, onClose }) {
   const [planIntakeMode, setPlanIntakeMode] = useState('append');
   const [lastGeneratedDraft, setLastGeneratedDraft] = useState(null);
   const settingsModalRef = useRef(null);
+  const backupFileInputRef = useRef(null);
 
   const planFeedback = useMemo(() => {
     const currentValue = parseNumericInput(planIntake.currentValue);
@@ -618,6 +619,23 @@ export default function SettingsEditor({ data, setData, onClose }) {
               </>
 
             <div className="settings-actions settings-actions-sticky" style={{ marginTop: 16 }}>
+              <div className="settings-backup-tools">
+                <div>
+                  <h3>Data backup</h3>
+                  <p>Export a safety copy or import a previous backup file.</p>
+                </div>
+                <div className="settings-backup-actions">
+                  <button type="button" className="secondary" onClick={onExportData}>Export backup</button>
+                  <button type="button" className="secondary" onClick={() => backupFileInputRef.current?.click()}>Import backup</button>
+                  <input
+                    ref={backupFileInputRef}
+                    type="file"
+                    accept="application/json"
+                    hidden
+                    onChange={onImportData}
+                  />
+                </div>
+              </div>
               <button className="secondary" onClick={cancel}>Cancel</button>
               <button className="primary" onClick={apply}>Apply</button>
             </div>

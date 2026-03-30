@@ -212,9 +212,18 @@ export function applyGeneratedDraft({ draft, blueprint, draftId, mode, makeId })
     categories.push(targetCategory);
   }
 
-  const createdMilestones = blueprint.milestones.map((milestone) => ({ id: makeId(), ...milestone, _draftId: draftId, _draftSource: 'plan-intake' }));
+  const createdMilestones = blueprint.milestones.map((milestone) => ({
+    id: makeId(),
+    categoryId: targetCategory.id,
+    categoryName: targetCategory.name,
+    ...milestone,
+    _draftId: draftId,
+    _draftSource: 'plan-intake'
+  }));
   const createdActions = blueprint.actions.map((action, idx) => ({
     id: makeId(),
+    categoryId: targetCategory.id,
+    categoryName: targetCategory.name,
     goalId: createdMilestones[Math.min(idx, createdMilestones.length - 1)]?.id || '',
     ...action,
     _draftId: draftId,
