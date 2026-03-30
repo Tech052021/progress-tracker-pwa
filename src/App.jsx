@@ -588,6 +588,49 @@ function App() {
     setData(defaultData);
   };
 
+  const allTrackedGoals = normalizedCategories.flatMap((category) => category.goals || []);
+  const periodTrackableGoals = allTrackedGoals.filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
+  const completedPeriodGoals = periodTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
+  const openPeriodGoals = Math.max(0, periodTrackableGoals.length - completedPeriodGoals);
+
+  const activeAreaGoals = activeGoalCategory?.goals || [];
+  const activeAreaTrackableGoals = activeAreaGoals.filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
+  const activeAreaCompleted = activeAreaTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
+
+  let tabBadges = [];
+  if (tab === 'goals') {
+    tabBadges = [
+      `Focus areas: ${normalizedCategories.length}`,
+      `Active area: ${activeGoalCategory?.name || 'None'}`,
+      `Goals in area: ${activeAreaGoals.length}`,
+      `Completed in area: ${activeAreaCompleted}/${activeAreaTrackableGoals.length || 0}`
+    ];
+  } else if (tab === 'progress') {
+    const hitRate = periodTrackableGoals.length
+      ? Math.round((completedPeriodGoals / periodTrackableGoals.length) * 100)
+      : 0;
+    tabBadges = [
+      `Tracked goals: ${allTrackedGoals.length}`,
+      `Completed this period: ${completedPeriodGoals}`,
+      `Open this period: ${openPeriodGoals}`,
+      `Hit rate: ${hitRate}%`
+    ];
+  } else if (tab === 'log') {
+    tabBadges = [
+      `Tracked goals: ${allTrackedGoals.length}`,
+      `Ready to log: ${periodTrackableGoals.length}`,
+      `Completed this period: ${completedPeriodGoals}`,
+      `Open this period: ${openPeriodGoals}`
+    ];
+  } else {
+    tabBadges = [
+      `Tracked goals: ${allTrackedGoals.length}`,
+      `Completed this period: ${completedPeriodGoals}`,
+      `Open this period: ${openPeriodGoals}`,
+      `Current week: ${currentWeek}`
+    ];
+  }
+
   return (
     <div className="app-shell">
       <header className="hero">
@@ -596,16 +639,9 @@ function App() {
             <NextStrideLogo />
             <span className="brand-wordmark">NextStride</span>
           </div>
-          <h1>Progress Tracker</h1>
           <p className="hero-copy">
-            Build momentum across career, health, learning, and practice — even when life is messy.
+            Build momentum across career, health, learning, and habit; even when going gets tough !!!
           </p>
-          <div className="hero-badges">
-            <span className="badge">Focus areas: {normalizedCategories.length}</span>
-            <span className="badge">Active area: {activeGoalCategory?.name || 'None yet'}</span>
-            <span className="badge">Streak: {activityStreakDays} day{activityStreakDays === 1 ? '' : 's'}</span>
-            <span className="badge">{currentWeek}</span>
-          </div>
           <div className="tabs hero-nav-tabs" role="tablist" aria-label="Primary app navigation">
             {[
               ['dashboard', 'Dashboard'],
@@ -618,6 +654,13 @@ function App() {
               </button>
             ))}
           </div>
+          {allTrackedGoals.length > 0 && (
+            <div className="hero-badges">
+              {tabBadges.map((label) => (
+                <span className="badge" key={label}>{label}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="hero-actions">
           <button className="primary" onClick={exportData}>Export backup</button>
