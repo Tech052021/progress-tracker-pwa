@@ -605,6 +605,13 @@ function App() {
       `Goals in area: ${activeAreaGoals.length}`,
       `Completed in area: ${activeAreaCompleted}/${activeAreaTrackableGoals.length || 0}`
     ];
+  } else if (tab === 'roadmap') {
+    tabBadges = [
+      `Short-term goals: ${shortTermGoals.length}`,
+      `Action items: ${actionItems.length}`,
+      `Completed actions: ${completedActionItems}`,
+      `Active area: ${activeGoalCategory?.name || 'None'}`
+    ];
   } else if (tab === 'progress') {
     const hitRate = periodTrackableGoals.length
       ? Math.round((completedPeriodGoals / periodTrackableGoals.length) * 100)
@@ -646,6 +653,7 @@ function App() {
             {[
               ['dashboard', 'Dashboard'],
               ['goals', 'Goals'],
+              ['roadmap', 'Roadmap'],
               ['progress', 'Progress'],
               ['log', 'Log']
             ].map(([id, label]) => (
@@ -670,18 +678,6 @@ function App() {
           <button className="secondary settings-btn" onClick={() => setShowSettings(s => !s)}>{showSettings ? 'Close settings' : 'Settings'}</button>
         </div>
       </header>
-
-      <section className="card-grid metrics-grid">
-        {/** render top goals from categories as metric cards */}
-        {normalizedCategories.flatMap(c => c.goals).slice(0, 5).map((g) => (
-          <MetricCard
-            key={g.id}
-            title={`${g.name}${formatGoalPeriodForCard(g.period)}`}
-            value={isTargetGoalPeriod(g.period) ? formatGoalValue(g.target, g.unit) : goalCount(g)}
-            subtitle={isTargetGoalPeriod(g.period) ? (g.target ? `Target ${formatGoalValue(g.target, g.unit)}` : 'Set target in Settings') : `Goal ${g.target}${formatGoalUnit(g)}`}
-          />
-        ))}
-      </section>
 
       {tab === 'dashboard' && (
         <section className="card-grid two-up">
@@ -716,27 +712,8 @@ function App() {
 
           <section className="card">
             <div className="card-head">
-              <h2>Goal roadmap</h2>
-              <p>Planner-generated milestones and action steps that are currently in motion.</p>
-            </div>
-            <ProgressRow label="Action items complete" value={completedActionItems} target={actionItems.length || 1} />
-            <ProgressRow label="Average short-term goal progress" value={averageGoalProgress} target={100} />
-            <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
-            <div className="snapshot-row"><span>Action items done</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Upcoming milestones</h2>
-              <p>Next due goals and actions</p>
-            </div>
-            <RoadmapList goals={shortTermGoals} actions={actionItems} />
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Focus next</h2>
-              <p>Top priorities chosen from your active goals.</p>
+              <h2>Today focus</h2>
+              <p>Only what you should care about right now.</p>
             </div>
             {focusGoals.length ? (
               <div className="entry-list">
@@ -757,29 +734,11 @@ function App() {
             ) : (
               <div className="empty-state">Open Goals to define the areas you want to track.</div>
             )}
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Progress game</h2>
-              <p>Level up through consistency and completed actions.</p>
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
+              <button className="secondary" onClick={() => setTab('progress')}>View analytics</button>
+              <button className="secondary" onClick={() => setTab('log')}>Open log</button>
             </div>
-            <div className="snapshot-row"><span>Level</span><strong>{userLevel}</strong></div>
-            <div className="snapshot-row"><span>XP</span><strong>{experiencePoints}</strong></div>
-            <div className="snapshot-row"><span>Achievements</span><strong>{unlockedAchievements}/{achievements.length}</strong></div>
-            <div style={{ marginTop: 10 }}>
-              <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.round((levelProgress / 250) * 100)}%` }} /></div>
-              <p className="helper-text" style={{ marginBottom: 0 }}>{xpToNextLevel} XP to level {userLevel + 1}</p>
-            </div>
-            <div className="achievement-grid" style={{ marginTop: 10 }}>
-              {achievements.map((item) => (
-                <div key={item.id} className={item.unlocked ? 'achievement-chip unlocked' : 'achievement-chip'}>
-                  <strong>{item.label}</strong>
-                  <span>{item.hint}</span>
-                </div>
-              ))}
-            </div>
-            <div className="note-box" style={{ marginTop: 12 }}>{messageOfTheDay}</div>
           </section>
         </section>
       )}
@@ -824,13 +783,49 @@ function App() {
 
           <section className="card">
             <div className="card-head">
-              <h2>Roadmap and history</h2>
-              <p>See how your active focus area connects to milestones and recent entries.</p>
+              <h2>What next</h2>
+              <p>Use this workspace to edit your goals, then review timeline details in the Roadmap tab.</p>
+            </div>
+            <div className="snapshot-row"><span>Short-term goals</span><strong>{shortTermGoals.length}</strong></div>
+            <div className="snapshot-row"><span>Action items</span><strong>{actionItems.length}</strong></div>
+            <div className="snapshot-row"><span>Completed actions</span><strong>{completedActionItems}</strong></div>
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="primary" onClick={() => setTab('roadmap')}>Open roadmap</button>
+              <button className="secondary" onClick={() => setTab('progress')}>Open analytics</button>
+            </div>
+          </section>
+        </section>
+      )}
+
+      {tab === 'roadmap' && (
+        <section className="card-grid two-up">
+          <section className="card">
+            <div className="card-head">
+              <h2>Roadmap</h2>
+              <p>Upcoming short-term goals and action items in one timeline view.</p>
             </div>
             <RoadmapList goals={shortTermGoals} actions={actionItems} />
-            {activeGoalCategory && (
-              <div style={{ marginTop: 16 }}>
-                <h3 style={{ marginBottom: 10 }}>Recent {activeGoalCategory.name} activity</h3>
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h2>Recent history</h2>
+              <p>Click through categories to inspect recent activity details.</p>
+            </div>
+            <div className="tabs" role="tablist" aria-label="Roadmap history categories">
+              {normalizedCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                  onClick={() => setActiveGoalCategoryId(category.id)}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+            {activeGoalCategory ? (
+              <div style={{ marginTop: 14 }}>
                 <EntryList
                   items={mergeEntries(activeGoalCategory.goals.map((goal) => {
                     const bucket = mapGoalToBucket(goal.name);
@@ -839,6 +834,8 @@ function App() {
                   onDelete={removeEntry}
                 />
               </div>
+            ) : (
+              <div className="empty-state">No categories configured yet.</div>
             )}
           </section>
         </section>
@@ -849,24 +846,51 @@ function App() {
           <section className="card">
             <div className="card-head">
               <h2>Goal progress</h2>
-              <p>Weekly and monthly scoreboards</p>
+              <p>Overall analytics for the current week and month.</p>
             </div>
             <ProgressRow label="Workouts" value={weekStats.workouts} target={data.settings.workoutsPerWeek} />
             <ProgressRow label="LeetCode" value={weekStats.leetcode} target={data.settings.leetcodePerWeek} />
             <ProgressRow label="Pool" value={weekStats.pool} target={data.settings.poolPracticePerWeek} />
             <ProgressRow label="UVM" value={monthStats.uvm} target={data.settings.uvmTopicsPerMonth} />
             <ProgressRow label="AI" value={monthStats.ai} target={data.settings.aiExperimentsPerMonth} />
+            <div className="snapshot-row"><span>Action items complete</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
+            <div className="snapshot-row"><span>Average short-term progress</span><strong>{averageGoalProgress}%</strong></div>
           </section>
 
           <section className="card">
             <div className="card-head">
-              <h2>This month snapshot</h2>
-              <p>Quick pulse on momentum</p>
+              <h2>Category analytics</h2>
+              <p>Click through categories to inspect goals and progress.</p>
             </div>
-            <Snapshot label="Bug analyses" value={monthStats.bugs} />
-            <Snapshot label="Mentor discussions" value={monthStats.mentor} />
-            <Snapshot label="AI experiments" value={monthStats.ai} />
-            <Snapshot label="UVM topics" value={monthStats.uvm} />
+            <div className="tabs" role="tablist" aria-label="Analytics categories">
+              {normalizedCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={activeGoalCategory?.id === category.id ? 'tab active' : 'tab'}
+                  onClick={() => setActiveGoalCategoryId(category.id)}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+            {activeGoalCategory ? (
+              <div style={{ marginTop: 14 }}>
+                <div className="snapshot-row"><span>Goals in category</span><strong>{activeGoalCategory.goals.length}</strong></div>
+                {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
+                  <div key={goal.id} style={{ marginTop: 10 }}>
+                    <ProgressRow
+                      label={goal.name}
+                      value={isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal)}
+                      target={Number(goal.target) || 0}
+                      unit={goal.unit}
+                    />
+                  </div>
+                )) : <div className="empty-state" style={{ marginTop: 10 }}>No goals in this category yet.</div>}
+              </div>
+            ) : (
+              <div className="empty-state">No categories configured yet.</div>
+            )}
           </section>
         </section>
       )}
