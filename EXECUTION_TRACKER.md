@@ -9,8 +9,8 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 
 | Phase | Dates | Focus | Status | Exit Criteria |
 |---|---|---|---|---|
-| Phase 0 | 2026-03-30 to 2026-03-31 | Scope lock + metrics + acceptance tests | In progress | MVP scope approved, non-goals locked, acceptance checklist finalized |
-| Phase 1 | 2026-04-01 to 2026-04-10 | Core web MVP (plan -> edit -> track) | Not started | User can create/edit/track plan end-to-end without data loss |
+| Phase 0 | 2026-03-30 to 2026-03-31 | Scope lock + metrics + acceptance tests | Completed | MVP scope approved, non-goals locked, acceptance checklist finalized |
+| Phase 1 | 2026-04-01 to 2026-04-10 | Core web MVP (plan -> edit -> track) | In progress | User can create/edit/track plan end-to-end without data loss |
 | Phase 2 | 2026-04-11 to 2026-04-16 | Motivation loop (in-app encouragement) | Not started | Evidence-based messages and weekly reflection working |
 | Phase 3 | 2026-04-17 to 2026-04-26 | Account + cloud sync (web first) | Not started | Auth, sync, guest merge and conflict-safe behavior validated |
 | Phase 4 | 2026-04-27 to 2026-04-30 | Stabilization + private access readiness | Not started | Critical paths stable and private access checklist passed |
@@ -28,6 +28,9 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 | Goal intake and plan generation | Convert natural-language goal into editable draft plan | 1 | In progress | Session A+B+C+D complete: guided planner, realism checks, live preview, regenerate flow, richer goal generation, tested draft replacement helpers |
 | Plan editing and persistence | Category, goals, milestones, action items, safe save | 1 | In progress | Draft-generation logic extracted into pure helpers and covered by automated non-destructive tests |
 | Data safety and migrations | Preserve user data, backup before migration, no overwrite | 1 | In progress | Planner metadata stripping and replace-vs-append flows now covered by tests |
+| IA and interaction refinement | Remove clutter, simplify navigation, one-pane workflow | 1 | In progress | Added top-level tabs, moved roadmap/progress to single-pane sub-tabs, removed duplicate in-page navigation, improved touch workflows |
+| Goal progress UX | Let users update goal progress directly from goals view | 1 | In progress | Added inline "Add progress" on goal cards and integrated manual updates into progress counting |
+| Category-scoped analysis | Ensure roadmap/progress are category-aware and understandable | 1 | In progress | Added category tabs and category-based filtering for roadmap and progress views |
 | Baseline and check-ins | Before/after reference timeline per goal | 2 | Not started | Needed for meaningful analysis and motivation |
 | Encouragement engine | Trigger messages from progress + consistency + baseline | 2 | Not started | Positive tone only, anti-spam limits |
 | Notification preferences | Channel and timing controls | 2 | Not started | UI first, sending later |
@@ -50,6 +53,24 @@ Use this format every work session.
 | 2026-03-29 (Session 6) | Add lightweight plan preview before final generation | Added live draft preview in planner modal showing generated category, goals, milestones, and first action steps before insertion | npm run build passed | None | Session D: add non-destructive persistence tests for generated drafts |
 | 2026-03-29 (Session 7) | Add non-destructive persistence tests for generated drafts | Extracted planner draft mutation logic into pure helpers and added automated tests for metadata stripping, append preservation, and replace-only-generated behavior | npm test and npm run build passed | None | Session E: add baseline/check-in schema draft for outcome tracking |
 | 2026-03-29 (Session 8) | Stabilize nested modal sizing and scroll behavior | Implemented layered modal architecture where active popup owns scroll, child popup size is dynamically computed from parent modal bounds, and extracted reusable `useLayeredModalSizing` hook for future popups | npm run build passed | None | Reuse hook for any future nested popup before adding custom modal CSS |
+| 2026-03-29 (Session 9) | Start Session E baseline/check-in schema | Session E was intentionally paused to prioritize urgent UX/IA issues raised during review | npm run build passed | Scope interruption: user-directed pivot to UI clarity before schema work | Rework information architecture without losing existing settings functionality |
+| 2026-03-29 (Session 10) | Simplify app IA and declutter main workflows | Added clearer top navigation and separated Goals, Roadmap, Progress, Log concerns | npm run build passed | Regression risk: earlier over-simplification hid prior settings work and required restoration | Restore complete SettingsEditor behind Settings and preserve all existing planner capabilities |
+| 2026-03-29 (Session 11) | Stabilize modal behavior and reduce accidental exits | Enforced explicit-button close behavior (no backdrop dismiss) and continued nested modal fixes | npm run build passed | Interruption: repeated nested-scroll/overlay issues consumed planned implementation time | Consolidate one-scroll-per-view behavior and remove split screens |
+| 2026-03-29 (Session 12) | Improve goals/readability and move roadmap concerns | Introduced dedicated Roadmap tab and removed roadmap/history from Goals main view | npm run build passed | IA churn required multiple layout iterations before user acceptance | Convert Progress and Roadmap to single-pane sub-tab flows |
+| 2026-03-29 (Session 13) | Reduce clutter and duplicate navigation controls | Removed duplicate roadmap/analytics actions from Goals; kept top-header tabs as source of navigation truth | npm run build passed | Navigation duplication previously caused confusion and noisy UI | Make progress and roadmap category-aware |
+| 2026-03-29 (Session 14) | Make roadmap/progress category-aware and fix data mismatch | Added category tabs + filtering in roadmap/progress and corrected goal-progress data source from legacy fixed rows to live goal data | npm run build passed | Mapping ambiguity for old roadmap items without explicit category metadata | Add explicit category metadata to new generated milestones/actions and keep fallback inference for legacy data |
+| 2026-03-29 (Session 15) | Remove nested scrollbars and split-screen behavior | Fixed roadmap nested scroll and converted log to single-pane top-subtab flow | npm run build passed | Visual consistency interruptions from proportional/tab styling and mobile readability | Refine tab proportions and maintain touch-friendly controls |
+| 2026-03-29 (Session 16) | Close key goals UX gap | Added inline goal progress update controls in Goals cards; persisted manual updates and included them in counting logic | npm run build passed | This work was unplanned but required to meet "update progress in goals" requirement | Verify end-to-end counts for bucket-based and manual progress updates |
+| 2026-03-30 (Session 17) | Goals UX stabilization + responsive polish + data correctness fixes | Added weekly check calendar UX (including compact ordinal date labels), unified goal-row layout across goal types, simplified category tabs, improved mobile responsiveness, fixed deleted-category progress reuse, and removed implicit legacy bucket carryover so recreated goals start clean | Multiple npm run build validations passed across checkpoints | Scope still drifting from Session E baseline/check-in due to repeated UI refinement loops | Freeze UI changes and resume Session E baseline/check-in schema wiring |
+| 2026-03-30 (Session 18) | Category tabs visual distinction and tab/content separation | Added top border (2px #e2e8f0) and increased spacing between category tabs and goals content for clear visual hierarchy | npm run build passed (25.03 kB CSS, 212.57 kB JS gzipped, 1.06s build time) | None | Ready for checkpoint and Session E-Resume | 
+
+### Execution Drift Summary (2026-03-29)
+
+1. Planned path after Session 8 was Session E (baseline/check-ins), but execution shifted heavily into UX/IA stabilization.
+2. Primary interruption cause: repeated user-requested UI pivots to improve readability, reduce clutter, and remove split-screen patterns.
+3. Secondary interruption cause: nested modal and nested scroll ownership issues requiring multiple correction passes.
+4. Result: substantial Phase 1 UI/interaction progress delivered; Phase 2 baseline/check-in and encouragement work deferred.
+5. Recovery action: freeze current IA for at least one session and resume deferred Session E schema work before new major UI changes.
 
 ## 5) Phase 0 Checklist (Current)
 
@@ -134,11 +155,33 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 
 ## 11) Next 3 Sessions (Concrete)
 
-1. Session E (2h): Add baseline/check-in schema draft for outcome tracking.
-2. Session F (2h): Connect generated plans to evidence-based encouragement rules.
-3. Session G (2h): Add event instrumentation for planner creation, apply, and regenerate flows.
+1. Session E-Resume (2h): Add baseline/check-in schema draft for outcome tracking and wire minimal read/write paths.
+2. Session F (2h): Add event instrumentation for planner create/apply/regenerate and goals-inline-progress updates.
+3. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
 
-## 12) How We Keep This Updated
+## 12) Restart Checkpoint (2026-03-30, Session 18)
+
+Use this as the exact restart point for the next work block.
+
+1. Branch state at checkpoint: `main...origin/main`.
+2. Working tree at checkpoint (Session 18 final):
+	- Modified: `src/App.jsx` (with weekly checklist, unified goal rows, category filtering)
+	- Modified: `src/components/SettingsEditor.jsx` (with orphaned goalUpdates cleanup)
+	- Modified: `src/styles.css` (with category tabs visual distinction: top border + spacing)
+	- Modified: `EXECUTION_TRACKER.md`
+3. Functional state locked:
+	- Goals supports compact weekly checklist chips with ordinal labels (`30th/Mon`) and day/week checklist behavior.
+	- Goal cards use one consistent responsive header row across milestone and trackable goals.
+	- Category tabs in Goals are simplified to names only (no duplicate progress info).
+	- Clear visual separation between category tabs and content below via top border.
+	- Recreated categories/goals no longer inherit progress from deleted goals by implicit name bucket matching.
+	- Top navigation and goals UI re-tuned for responsive behavior on small screens.
+4. Scope freeze for restart:
+	- No new UI restructuring before Session E-Resume baseline/check-in schema work starts.
+5. First task when resuming:
+	- Start with Session E-Resume from Section 11.
+
+## 13) How We Keep This Updated
 
 At the end of every session:
 

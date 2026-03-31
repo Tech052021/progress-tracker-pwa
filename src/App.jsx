@@ -26,6 +26,8 @@ function normalizeCategories(categories, weightUnit = 'lb') {
     goals: Array.isArray(category.goals)
       ? category.goals.map((goal) => ({
         ...goal,
+        categoryId: goal.categoryId || category.id,
+        categoryName: goal.categoryName || category.name,
         unit: goal.unit || inferGoalUnit(goal.name, weightUnit)
       }))
       : []
@@ -58,6 +60,36 @@ function getWeekId(dateString) {
   const yearStart = new Date(date.getFullYear(), 0, 1);
   const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
   return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+function getWeekDateOptions(dateString = ISO_DATE()) {
+  const toOrdinal = (day) => {
+    const mod100 = day % 100;
+    if (mod100 >= 11 && mod100 <= 13) return `${day}th`;
+    const mod10 = day % 10;
+    if (mod10 === 1) return `${day}st`;
+    if (mod10 === 2) return `${day}nd`;
+    if (mod10 === 3) return `${day}rd`;
+    return `${day}th`;
+  };
+
+  const date = new Date(`${dateString}T00:00:00`);
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + mondayOffset);
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return labels.map((label, index) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + index);
+    return {
+      label,
+      iso: d.toISOString().slice(0, 10),
+      day: String(d.getDate()),
+      compactLabel: `${toOrdinal(d.getDate())}/${label}`
+    };
+  });
 }
 
 function getMonthId(dateString = ISO_DATE()) {
@@ -395,6 +427,7 @@ function App() {
   };
 
   const today = ISO_DATE();
+  const weekDateOptions = useMemo(() => getWeekDateOptions(today), [today]);
   const dailyTarget = 3;
   const todayActivityCount = countEntriesOnDate(data.entries, today);
   const activityStreakDays = getActivityStreakDays(data.entries, today);
@@ -641,16 +674,21 @@ function App() {
   }
 
   function goalCount(goal) {
-    const bucket = mapGoalToBucket(goal.name);
+    const usesLegacyBucketTracking = goal?.trackSource === 'bucket';
+    const bucket = usesLegacyBucketTracking ? mapGoalToBucket(goal.name) : null;
     const period = normalizeGoalPeriod(goal.period);
+    const doesEntryMatchGoal = (entry) => {
+      if (!entry) return false;
+      if (goal?.id) return entry.goalId === goal.id;
+      return false;
+    };
+
     const bucketCount = bucket
       ? (data.entries[bucket]?.filter((entry) => isEntryInGoalPeriod(entry, period)).length || 0)
       : 0;
 
     const manualCount = data.entries.goalUpdates?.filter((entry) => {
-      const byId = entry.goalId && entry.goalId === goal.id;
-      const byName = String(entry.goalName || '').trim().toLowerCase() === String(goal.name || '').trim().toLowerCase();
-      return (byId || byName) && isEntryInGoalPeriod(entry, period);
+      return doesEntryMatchGoal(entry) && isEntryInGoalPeriod(entry, period);
     }).reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0) || 0;
 
     return bucketCount + manualCount;
@@ -665,11 +703,54 @@ function App() {
       date: today,
       goalId: goal.id,
       goalName: goal.name,
+      categoryId: goal.categoryId,
+      categoryName: goal.categoryName,
       amount,
       unit: goal.unit || 'count'
     });
 
     setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: '1' }));
+  };
+
+  const isWeeklyGoalChecked = (goal, dateIso) => {
+    return (data.entries.goalUpdates || []).some((entry) =>
+      entry.date === dateIso
+      && entry.source === 'weekly-check'
+      && entry.goalId === goal.id
+    );
+  };
+
+  const getChecklistAmountForGoal = (goal) => {
+    const period = normalizeGoalPeriod(goal?.period);
+    if (period === 'day') {
+      const target = Number(goal?.target || 0);
+      return target > 0 ? target : 1;
+    }
+    return 1;
+  };
+
+  const toggleWeeklyGoalCheck = (goal, dateIso) => {
+    const existing = (data.entries.goalUpdates || []).find((entry) =>
+      entry.date === dateIso
+      && entry.source === 'weekly-check'
+      && entry.goalId === goal.id
+    );
+
+    if (existing) {
+      removeEntry('goalUpdates', existing.id);
+      return;
+    }
+
+    addEntry('goalUpdates', {
+      date: dateIso,
+      goalId: goal.id,
+      goalName: goal.name,
+      categoryId: goal.categoryId,
+      categoryName: goal.categoryName,
+      amount: getChecklistAmountForGoal(goal),
+      unit: goal.unit || 'count',
+      source: 'weekly-check'
+    });
   };
 
   const exportData = () => {
@@ -709,9 +790,15 @@ function App() {
   const activeAreaGoals = activeGoalCategory?.goals || [];
   const activeAreaTrackableGoals = activeAreaGoals.filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
   const activeAreaCompleted = activeAreaTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
+  const activeAreaOverAchieved = activeAreaTrackableGoals.filter((goal) => goalCount(goal) > Number(goal.target || 0)).length;
   const activeAreaCompletionRate = activeAreaTrackableGoals.length
     ? Math.round((activeAreaCompleted / activeAreaTrackableGoals.length) * 100)
     : 0;
+  const activeAreaPaceStatus = activeAreaTrackableGoals.length === 0
+    ? 'No target'
+    : activeAreaCompleted >= activeAreaTrackableGoals.length
+      ? activeAreaOverAchieved > 0 ? 'Over achieved' : 'Achieved'
+      : 'In progress';
 
   let tabBadges = [];
   if (tab === 'goals') {
@@ -862,9 +949,6 @@ function App() {
             <div className="goals-touch-top">
               <div className="goal-category-strip" role="tablist" aria-label="Goal categories">
                 {normalizedCategories.map((category) => {
-                  const categoryTrackableGoals = (category.goals || []).filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
-                  const categoryCompletedGoals = categoryTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
-
                   return (
                     <button
                       key={category.id}
@@ -873,8 +957,6 @@ function App() {
                       onClick={() => setActiveGoalCategoryId(category.id)}
                     >
                       <span>{category.name}</span>
-                      <small>{category.goals.length} goals</small>
-                      <small>{categoryCompletedGoals}/{categoryTrackableGoals.length || 0} on pace</small>
                     </button>
                   );
                 })}
@@ -886,85 +968,104 @@ function App() {
               <>
                 <div className="goal-focus-banner compact">
                   <h3>{activeGoalCategory.name}</h3>
-                  <div className="goal-focus-stats compact">
-                    <div className="goal-focus-stat">
-                      <span>Goals</span>
-                      <strong>{activeAreaGoals.length}</strong>
-                    </div>
-                    <div className="goal-focus-stat">
-                      <span>On pace</span>
-                      <strong>{activeAreaCompleted}</strong>
-                    </div>
-                    <div className="goal-focus-stat">
-                      <span>Rate</span>
-                      <strong>{activeAreaCompletionRate}%</strong>
-                    </div>
-                    <div className="goal-focus-stat">
-                      <span>Short-term</span>
-                      <strong>{shortTermGoals.length}</strong>
-                    </div>
-                    <div className="goal-focus-stat">
-                      <span>Actions</span>
-                      <strong>{actionItems.length}</strong>
-                    </div>
-                    <div className="goal-focus-stat">
-                      <span>Done</span>
-                      <strong>{completedActionItems}</strong>
-                    </div>
+                  <div className="goal-focus-summary-row" role="status" aria-label="Active category summary">
+                    <span className="goal-focus-summary-item">Goals: <strong>{activeAreaGoals.length}</strong></span>
+                    <span className="goal-focus-summary-item">On pace: <strong>{activeAreaPaceStatus}</strong> ({activeAreaCompleted}/{activeAreaTrackableGoals.length || 0})</span>
+                    <span className="goal-focus-summary-item">Rate: <strong>{activeAreaCompletionRate}%</strong></span>
+                    <span className="goal-focus-summary-item">Actions: <strong>{actionItems.length}</strong></span>
+                    <span className="goal-focus-summary-item">Done: <strong>{completedActionItems}</strong></span>
                   </div>
                 </div>
 
                 {activeAreaGoals.length ? (
                   <div className="goal-detail-list">
                     {activeAreaGoals.map((goal) => {
-                      const currentValue = isTargetGoalPeriod(goal.period) ? 0 : goalCount(goal);
+                      const goalPeriod = normalizeGoalPeriod(goal.period);
+                      const isMilestoneGoal = isTargetGoalPeriod(goalPeriod);
+                      const usesChecklist = goalPeriod === 'week' || goalPeriod === 'day';
+                      const currentValue = isMilestoneGoal ? 0 : goalCount(goal);
                       const targetValue = Number(goal.target || 0);
-                      const isComplete = !isTargetGoalPeriod(goal.period) && targetValue > 0 && currentValue >= targetValue;
+                      const isComplete = !isMilestoneGoal && targetValue > 0 && currentValue >= targetValue;
                       const remaining = Math.max(0, targetValue - currentValue);
+                      const progressPct = targetValue > 0 ? Math.min(100, Math.round((currentValue / targetValue) * 100)) : 0;
+                      const unitSuffix = goal.unit && goal.unit !== 'count' ? ` ${goal.unit}` : '';
 
                       return (
                         <article className="goal-detail-card" key={goal.id}>
-                          <div className="goal-detail-top">
+                          <div className={isMilestoneGoal ? 'goal-inline-progress-row milestone' : 'goal-inline-progress-row'}>
                             <h4>{goal.name}</h4>
+                            {isMilestoneGoal ? (
+                              <div className="goal-inline-milestone-meta">{goal.victoryDate ? `Victory ${goal.victoryDate}` : 'Victory date not set'}</div>
+                            ) : (
+                              <div className="goal-inline-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={targetValue || 0} aria-valuenow={currentValue} aria-label={`${goal.name} progress`}>
+                                <div className="goal-inline-progress-fill" style={{ width: `${progressPct}%` }} />
+                              </div>
+                            )}
+                            <span className="goal-inline-progress-value">
+                              {isMilestoneGoal ? `Target ${targetValue || 'Not set'}${targetValue ? unitSuffix : ''}` : `${currentValue}/${targetValue}${unitSuffix}`}
+                            </span>
                             <span className={isComplete ? 'goal-status-pill done' : 'goal-status-pill'}>
-                              {isTargetGoalPeriod(goal.period) ? 'Milestone' : isComplete ? 'On pace' : `${remaining} left`}
+                              {isMilestoneGoal ? 'Milestone' : isComplete ? 'On pace' : `${remaining} left`}
                             </span>
                           </div>
 
-                          {isTargetGoalPeriod(goal.period) ? (
-                            <div className="goal-outcome-grid">
-                              <div className="goal-outcome-cell">
-                                <span>Target</span>
-                                <strong>{targetValue || 'Not set'} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}</strong>
-                              </div>
-                              <div className="goal-outcome-cell">
-                                <span>Victory</span>
-                                <strong>{goal.victoryDate || 'Not set'}</strong>
-                              </div>
-                            </div>
-                          ) : (
+                          {isMilestoneGoal ? (
                             <>
-                              <ProgressRow label={goal.name} value={currentValue} target={targetValue} unit={goal.unit} />
-                              <div className="goal-progress-capture">
-                                <div className="goal-progress-capture-meta">Update what you completed for this goal</div>
-                                <div className="goal-progress-capture-actions">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    value={goalUpdateDrafts[goal.id] ?? '1'}
-                                    onChange={(e) => setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: e.target.value }))}
-                                    aria-label={`Progress amount for ${goal.name}`}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="secondary"
-                                    onClick={() => recordGoalProgress(goal, goalUpdateDrafts[goal.id] ?? '1')}
-                                  >
-                                    Add progress
-                                  </button>
+                              <div className="goal-outcome-grid">
+                                <div className="goal-outcome-cell">
+                                  <span>Target</span>
+                                  <strong>{targetValue || 'Not set'} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}</strong>
+                                </div>
+                                <div className="goal-outcome-cell">
+                                  <span>Victory</span>
+                                  <strong>{goal.victoryDate || 'Not set'}</strong>
                                 </div>
                               </div>
+                            </>
+                          ) : (
+                            <>
+                              {usesChecklist ? (
+                                <div className="weekly-checklist">
+                                  <div className="goal-progress-capture-meta">Weekly check-in</div>
+                                  <div className="weekly-checklist-row" role="group" aria-label={`Weekly completion for ${goal.name}`}>
+                                    {weekDateOptions.map((dayOption) => {
+                                      const checked = isWeeklyGoalChecked(goal, dayOption.iso);
+                                      return (
+                                        <button
+                                          key={`${goal.id}-${dayOption.iso}`}
+                                          type="button"
+                                          className={checked ? 'weekly-day-btn checked' : 'weekly-day-btn'}
+                                          onClick={() => toggleWeeklyGoalCheck(goal, dayOption.iso)}
+                                          aria-pressed={checked}
+                                        >
+                                          <span>{dayOption.compactLabel}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="goal-progress-capture">
+                                  <div className="goal-progress-capture-meta">Update what you completed for this goal</div>
+                                  <div className="goal-progress-capture-actions">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      value={goalUpdateDrafts[goal.id] ?? '1'}
+                                      onChange={(e) => setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: e.target.value }))}
+                                      aria-label={`Progress amount for ${goal.name}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="secondary"
+                                      onClick={() => recordGoalProgress(goal, goalUpdateDrafts[goal.id] ?? '1')}
+                                    >
+                                      Add progress
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </>
                           )}
                         </article>
@@ -1126,7 +1227,6 @@ function App() {
                 </div>
                 {activeGoalCategory ? (
                   <div style={{ marginTop: 14 }}>
-                    <div className="snapshot-row"><span>Goals in category</span><strong>{activeGoalCategory.goals.length}</strong></div>
                     {activeGoalCategory.goals.length ? activeGoalCategory.goals.map((goal) => (
                       <div key={goal.id} style={{ marginTop: 10 }}>
                         <ProgressRow

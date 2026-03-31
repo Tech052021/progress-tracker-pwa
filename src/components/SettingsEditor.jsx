@@ -428,6 +428,11 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     const categoriesToPersist = stripDraftFields(draft.categories);
     const shortTermGoalsToPersist = stripDraftFields(draft.goalPlan.shortTermGoals);
     const actionItemsToPersist = stripDraftFields(draft.goalPlan.actionItems);
+    const validGoalIds = new Set(
+      categoriesToPersist.flatMap((category) =>
+        (category.goals || []).map((goal) => goal.id).filter(Boolean)
+      )
+    );
 
     const workoutsPerWeek = findGoalTarget(categoriesToPersist, 'workout');
     const leetcodePerWeek = findGoalTarget(categoriesToPersist, 'leetcode');
@@ -460,6 +465,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
       },
       entries: {
         ...prev.entries,
+        goalUpdates: (prev.entries.goalUpdates || []).filter((entry) => entry.goalId && validGoalIds.has(entry.goalId)),
         weights: prev.entries.weights.map((entry) => ({
           ...entry,
           weight: convertWeightValue(entry.weight, prevWeightUnit, nextWeightUnit)
