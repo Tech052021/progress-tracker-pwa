@@ -413,13 +413,6 @@ function App() {
     }));
   };
 
-  // Auto-dismiss motivational quote after 5 seconds
-  useEffect(() => {
-    if (!showQuote) return;
-    const timer = setTimeout(() => setShowQuote(false), 5000);
-    return () => clearTimeout(timer);
-  }, [showQuote]);
-
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
   const addEntry = (bucket, entry) => {
@@ -748,7 +741,7 @@ function App() {
     { text: 'The future belongs to those who believe in the beauty of their dreams.', author: 'Eleanor Roosevelt' },
     { text: 'Start where you are. Use what you have. Do what you can.', author: 'Arthur Ashe' },
   ];
-  const messageOfTheDay = dailyMessages[Math.abs(today.split('-').join('').split('').reduce((sum, n) => sum + Number(n), 0)) % dailyMessages.length];
+  const [messageOfTheDay] = useState(() => dailyMessages[Math.floor(Math.random() * dailyMessages.length)]);
 
   const formatGoalUnit = (goal) => {
     const unit = String(goal.unit || '').trim();
