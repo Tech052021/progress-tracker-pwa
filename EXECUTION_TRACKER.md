@@ -31,7 +31,7 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 | IA and interaction refinement | Remove clutter, simplify navigation, one-pane workflow | 1 | In progress | Added top-level tabs, moved roadmap/progress to single-pane sub-tabs, removed duplicate in-page navigation, improved touch workflows |
 | Goal progress UX | Let users update goal progress directly from goals view | 1 | In progress | Added inline "Add progress" on goal cards and integrated manual updates into progress counting |
 | Category-scoped analysis | Ensure roadmap/progress are category-aware and understandable | 1 | In progress | Added category tabs and category-based filtering for roadmap and progress views |
-| Baseline and check-ins | Before/after reference timeline per goal | 2 | Not started | Needed for meaningful analysis and motivation |
+| Baseline and check-ins | Before/after reference timeline per goal | 2 | In progress | `createdAt` baseline on new goals; weekly check-in card with 1-5 rating + notes live on dashboard; needs check-in history view in progress tab |
 | Encouragement engine | Trigger messages from progress + consistency + baseline | 2 | Partially done | Welcome popup, motivational quote splash, and NBA card deliver early motivation layer; evidence-based context-aware messages still pending |
 | Theming and auto-contrast | Luminance-based hero text color and brand-grad-hero cards | 1 | Done | Auto-contrast keeps text readable on all 8 themes |
 | Welcome and quote popups | Temu-style welcome splash + random wisdom quote splash | 1 | Done | Welcome: once/day + after new work; Quote: 50 attributed quotes, random each open, user-dismissed |
@@ -68,6 +68,7 @@ Use this format every work session.
 | 2026-03-30 (Session 17) | Goals UX stabilization + responsive polish + data correctness fixes | Added weekly check calendar UX (including compact ordinal date labels), unified goal-row layout across goal types, simplified category tabs, improved mobile responsiveness, fixed deleted-category progress reuse, and removed implicit legacy bucket carryover so recreated goals start clean | Multiple npm run build validations passed across checkpoints | Scope still drifting from Session E baseline/check-in due to repeated UI refinement loops | Freeze UI changes and resume Session E baseline/check-in schema wiring |
 | 2026-03-30 (Session 18) | Category tabs visual distinction and tab/content separation | Added top border (2px #e2e8f0) and increased spacing between category tabs and goals content for clear visual hierarchy | npm run build passed (25.03 kB CSS, 212.57 kB JS gzipped, 1.06s build time) | None | Ready for checkpoint and Session E-Resume | 
 | 2026-03-30/31 (Session 19) | Dashboard UX polish and motivation layer | Auto-contrast theming (luminance-based hero text), brand-grad-hero on all cards, moved NBA above greeting, Today box full-width fix, Temu-style welcome splash popup (streak + stats + quote), removed hero card from dashboard, AI→Journal rename, smart welcome popup frequency (once/day + after new work), motivational quote splash popup with 50 attributed wisdom quotes (random each open, user-dismissed) | npm run build passed at each checkpoint | Execution drift: UI polish consumed planned Session E time | Freeze UI; begin Session E-Resume baseline/check-in schema |
+| 2026-03-31 (Session 20 / E-Resume) | Baseline + weekly check-in schema | Added `createdAt` date on new goals for baseline tracking. Built weekly check-in dashboard card (rating 1-5, went well, to improve) with save to `weeklyCheckIns.entries`. Auto-snapshots week stats on submit. Shows "Done" state after checking in. | npm run build passed | None | Session F: event instrumentation |
 
 ### Execution Drift Summary (2026-03-29)
 
@@ -160,9 +161,9 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 
 ## 11) Next 3 Sessions (Concrete)
 
-1. Session E-Resume (2h): Expand baseline/check-in schema with read/write paths and a minimal check-in UI card on dashboard.
-2. Session F (2h): Add event instrumentation for planner create/apply/regenerate and goals-inline-progress updates.
-3. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
+1. Session F (2h): Add event instrumentation for planner create/apply/regenerate and goals-inline-progress updates.
+2. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
+3. Session H (2h): Add check-in history view in progress tab and baseline comparison on goal cards.
 
 ## 12) Restart Checkpoint (2026-03-31, Session 19)
 

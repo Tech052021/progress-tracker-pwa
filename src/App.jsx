@@ -392,8 +392,9 @@ function App() {
   const [progressView, setProgressView] = useState('goals');
   const [logView, setLogView] = useState('capture');
   const [goalUpdateDrafts, setGoalUpdateDrafts] = useState({});
-  const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false });
+  const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false, checkin: false });
   const [skippedGoalIds, setSkippedGoalIds] = useState([]);
+  const [checkinDraft, setCheckinDraft] = useState({ rating: 0, wentWell: '', toImprove: '' });
   const [showWelcome, setShowWelcome] = useState(() => {
     const stored = localStorage.getItem('nextstride_welcome');
     if (!stored) return true;
@@ -674,6 +675,35 @@ function App() {
   }, [normalizedCategories, data.entries, currentWeek, currentMonth, skippedGoalIds]);
 
   const toggleSection = (key) => setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const hasCheckedInThisWeek = (data.weeklyCheckIns?.entries || []).some((e) => e.weekId === currentWeek);
+  const lastCheckIn = (data.weeklyCheckIns?.entries || [])[0] || null;
+
+  const saveWeeklyCheckIn = () => {
+    if (!checkinDraft.rating) return;
+    const entry = {
+      id: crypto.randomUUID(),
+      weekId: currentWeek,
+      date: ISO_DATE(),
+      rating: checkinDraft.rating,
+      wentWell: checkinDraft.wentWell.trim(),
+      toImprove: checkinDraft.toImprove.trim(),
+      stats: {
+        weeklyLogs: weeklyActivityCount,
+        streak: activityStreakDays,
+        goalsOnPace: completedPeriodGoals,
+        totalGoals: periodTrackableGoals.length
+      }
+    };
+    setData((prev) => ({
+      ...prev,
+      weeklyCheckIns: {
+        entries: [entry, ...(prev.weeklyCheckIns?.entries || [])]
+      }
+    }));
+    setCheckinDraft({ rating: 0, wentWell: '', toImprove: '' });
+    setExpandedSections((prev) => ({ ...prev, checkin: false }));
+  };
 
   const achievements = [
     { id: 'first-log', label: 'First Step', hint: 'Create your first log entry', unlocked: totalActivityCount >= 1 },
@@ -1157,6 +1187,62 @@ function App() {
                   <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
                   <button className="secondary" onClick={() => setTab('progress')}>View progress</button>
                 </div>
+              </div>
+            )}
+          </section>
+
+          {/* ── COLLAPSIBLE: WEEKLY CHECK-IN ─────────────────── */}
+          <section className="card dash-collapse-card dash-collapse-checkin">
+            <button className="dash-collapse-header" onClick={() => toggleSection('checkin')} aria-expanded={expandedSections.checkin}>
+              <span>💬 Weekly Check-in {hasCheckedInThisWeek ? <span className="dash-collapse-badge">✓ Done</span> : <span className="dash-collapse-badge">Due</span>}</span>
+              <span className="dash-collapse-chevron">{expandedSections.checkin ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.checkin && (
+              <div className="dash-collapse-body">
+                {hasCheckedInThisWeek ? (
+                  <div className="checkin-done">
+                    <p>You checked in this week — rated it {['', '😞', '😐', '🙂', '😊', '🔥'][lastCheckIn?.rating || 0]}</p>
+                    {lastCheckIn?.wentWell && <p className="checkin-recap"><strong>Went well:</strong> {lastCheckIn.wentWell}</p>}
+                    {lastCheckIn?.toImprove && <p className="checkin-recap"><strong>To improve:</strong> {lastCheckIn.toImprove}</p>}
+                  </div>
+                ) : (
+                  <div className="checkin-form">
+                    <p className="checkin-prompt">How was your week?</p>
+                    <div className="checkin-rating-row">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          className={checkinDraft.rating === n ? 'checkin-rating active' : 'checkin-rating'}
+                          onClick={() => setCheckinDraft((d) => ({ ...d, rating: n }))}
+                        >
+                          {['', '😞', '😐', '🙂', '😊', '🔥'][n]}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="checkin-input"
+                      placeholder="What went well this week?"
+                      value={checkinDraft.wentWell}
+                      onChange={(e) => setCheckinDraft((d) => ({ ...d, wentWell: e.target.value }))}
+                      rows={2}
+                    />
+                    <textarea
+                      className="checkin-input"
+                      placeholder="What would you improve next week?"
+                      value={checkinDraft.toImprove}
+                      onChange={(e) => setCheckinDraft((d) => ({ ...d, toImprove: e.target.value }))}
+                      rows={2}
+                    />
+                    <button
+                      className="primary"
+                      disabled={!checkinDraft.rating}
+                      onClick={saveWeeklyCheckIn}
+                      style={{ marginTop: 8, width: '100%' }}
+                    >
+                      Save check-in
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </section>

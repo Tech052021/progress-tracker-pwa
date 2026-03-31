@@ -2166,7 +2166,8 @@ input:focus, textarea:focus, select:focus {
 .dash-nba-card,
 .dash-collapse-week,
 .dash-collapse-today,
-.dash-collapse-goals {
+.dash-collapse-goals,
+.dash-collapse-checkin {
   grid-column: 1 / -1;
 }
 
@@ -2179,6 +2180,75 @@ input:focus, textarea:focus, select:focus {
 }
 .dash-collapse-goals {
   border-left: 4px solid var(--brand-accent);
+}
+
+.dash-collapse-checkin {
+  border-left: 4px solid var(--brand);
+}
+
+/* ── Weekly Check-in Form ──────────────────── */
+.checkin-prompt {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.checkin-rating-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.checkin-rating {
+  font-size: 1.5rem;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.12);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.checkin-rating:hover {
+  transform: scale(1.15);
+}
+
+.checkin-rating.active {
+  border-color: var(--brand-accent);
+  background: rgba(255,255,255,0.22);
+  transform: scale(1.2);
+}
+
+.checkin-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: var(--hero-text);
+  font-size: 14px;
+  resize: none;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+
+.checkin-input::placeholder {
+  color: var(--hero-text-muted);
+}
+
+.checkin-input:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+}
+
+.checkin-done p {
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+.checkin-recap {
+  opacity: 0.85;
+  font-size: 13px !important;
 }
 
 @media (max-width: 720px) {

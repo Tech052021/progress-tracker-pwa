@@ -391,7 +391,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
 
   const addGoal = (catId) => {
     const newId = uid();
-    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '' }] } : c) }));
+    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '', createdAt: new Date().toISOString().slice(0, 10) }] } : c) }));
     setLastAddedGoalId(newId);
   };
 
