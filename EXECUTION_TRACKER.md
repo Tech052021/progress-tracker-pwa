@@ -70,6 +70,7 @@ Use this format every work session.
 | 2026-03-30 (Session 18) | Category tabs visual distinction and tab/content separation | Added top border (2px #e2e8f0) and increased spacing between category tabs and goals content for clear visual hierarchy | npm run build passed (25.03 kB CSS, 212.57 kB JS gzipped, 1.06s build time) | None | Ready for checkpoint and Session E-Resume | 
 | 2026-03-30/31 (Session 19) | Dashboard UX polish and motivation layer | Auto-contrast theming (luminance-based hero text), brand-grad-hero on all cards, moved NBA above greeting, Today box full-width fix, Temu-style welcome splash popup (streak + stats + quote), removed hero card from dashboard, AI→Journal rename, smart welcome popup frequency (once/day + after new work), motivational quote splash popup with 50 attributed wisdom quotes (random each open, user-dismissed) | npm run build passed at each checkpoint | Execution drift: UI polish consumed planned Session E time | Freeze UI; begin Session E-Resume baseline/check-in schema |
 | 2026-03-31 (Session 21 / F) | Event instrumentation for all 10 planned analytics events | Built `trackEvent` utility (localStorage-based, capped at 500 events). Instrumented: plan_created, goal_added, goal_deleted, settings_applied in SettingsEditor; log_added, export_used, import_used, encouragement_shown, streak_updated in App.jsx. Passed trackEvent as prop to SettingsEditor. | npm run build passed | None | Session G: encouragement rules |
+| 2026-04-01 (Session 22 / G) | Encouragement rules engine | Built priority-based encouragement engine via `useMemo` evaluating 12 data signals (streak milestones, daily target, goal proximity, category completion, check-in sentiment, weekly trend, milestone counts, onboarding). Renders top-priority message in a new full-width dashboard card between NBA and This Week. Tracks `encouragement_shown` with card type via `useEffect`. Added `.dash-encouragement-card` CSS with brand-grad-hero background. | npm run build passed | None | Session H: check-in history + baseline comparison |
 
 ### Execution Drift Summary (2026-03-29)
 
@@ -162,9 +163,9 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 
 ## 11) Next 3 Sessions (Concrete)
 
-1. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
-2. Session H (2h): Add check-in history view in progress tab and baseline comparison on goal cards.
-3. Session I (2h): Phase 1 exit validation — end-to-end create/edit/track flow, data persistence, migration safety.
+1. Session H (2h): Add check-in history view in progress tab and baseline comparison on goal cards.
+2. Session I (2h): Phase 1 exit validation — end-to-end create/edit/track flow, data persistence, migration safety.
+3. Session J (2h): Phase 2 exit validation — context-aware messages, weekly reflection, positive tone audit.
 
 ## 12) Restart Checkpoint (2026-03-31, Session 19)
 
@@ -178,7 +179,7 @@ Use this as the exact restart point for the next work block.
 	- Modified: `EXECUTION_TRACKER.md`
 3. Functional state locked:
 	- All 8 themes auto-compute readable text colors via HSL lightness analysis.
-	- Dashboard order: NBA → This Week → Today → Goals (no hero card).
+	- Dashboard order: NBA → Encouragement → This Week → Today → Goals (no hero card).
 	- Welcome popup shows once per day or after logging new work (streak ring + stats + fixed quote).
 	- Quote popup shows every other open with a random wisdom quote from 50 curated entries; dismissed by tap/click only.
 	- Journal entry replaces AI entry (bucket: journal).

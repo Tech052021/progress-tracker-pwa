@@ -980,6 +980,78 @@ function App() {
   const completedPeriodGoals = periodTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
   const openPeriodGoals = Math.max(0, periodTrackableGoals.length - completedPeriodGoals);
 
+  // ── Encouragement Engine ──────────────────────────────────
+  const encouragement = useMemo(() => {
+    const msgs = [];
+
+    // Streak milestones
+    if (activityStreakDays >= 30) msgs.push({ icon: '🏆', text: `${activityStreakDays}-day streak. That's world-class consistency.`, priority: 10 });
+    else if (activityStreakDays >= 14) msgs.push({ icon: '🔥', text: `${activityStreakDays} days in a row. You're building something real.`, priority: 9 });
+    else if (activityStreakDays >= 7) msgs.push({ icon: '🔥', text: `7+ day streak! Consistency is your superpower.`, priority: 8 });
+    else if (activityStreakDays >= 3) msgs.push({ icon: '⚡', text: `${activityStreakDays}-day streak going. Keep it alive.`, priority: 6 });
+    else if (activityStreakDays === 0 && totalActivityCount > 0) msgs.push({ icon: '🌅', text: 'New day, fresh start. One action is all it takes.', priority: 5 });
+
+    // Today's progress
+    if (todayActivityCount >= dailyTarget) msgs.push({ icon: '🎯', text: 'Daily target hit! Everything beyond is bonus.', priority: 7 });
+    else if (remainingToday === 1) msgs.push({ icon: '💪', text: 'One more action and today is a win.', priority: 8 });
+    else if (todayActivityCount > 0 && remainingToday > 1) msgs.push({ icon: '📈', text: `${todayActivityCount} done, ${remainingToday} to go. You've got this.`, priority: 4 });
+
+    // Goal proximity — almost there
+    if (focusGoals.length) {
+      const almostDone = focusGoals.find((g) => g.remaining > 0 && g.remaining <= 2 && g.current > 0);
+      if (almostDone) msgs.push({ icon: '🏁', text: `Almost there on "${almostDone.name}" — just ${almostDone.remaining} more.`, priority: 7 });
+    }
+
+    // All period goals completed
+    if (periodTrackableGoals.length > 0 && completedPeriodGoals >= periodTrackableGoals.length) {
+      msgs.push({ icon: '🌟', text: 'All goals on pace this period. Outstanding work.', priority: 9 });
+    } else if (periodTrackableGoals.length > 2 && completedPeriodGoals >= Math.ceil(periodTrackableGoals.length * 0.75)) {
+      msgs.push({ icon: '📊', text: `${completedPeriodGoals} of ${periodTrackableGoals.length} goals on pace. Strong momentum.`, priority: 5 });
+    }
+
+    // Category completion celebration
+    const completedCategory = categoryRings.find((r) => r.total > 0 && r.completed >= r.total);
+    if (completedCategory) msgs.push({ icon: '✅', text: `"${completedCategory.name}" — all goals met this period!`, priority: 8 });
+
+    // Weekly check-in sentiment
+    if (lastCheckIn && lastCheckIn.weekId === currentWeek) {
+      if (lastCheckIn.rating >= 4) msgs.push({ icon: '😊', text: 'Great week so far. Keep that energy going.', priority: 3 });
+      else if (lastCheckIn.rating <= 2) msgs.push({ icon: '🤝', text: 'Tough week — but showing up is what matters most.', priority: 6 });
+    }
+
+    // Weekly improvement — compare with previous check-in
+    const checkIns = data.weeklyCheckIns?.entries || [];
+    if (checkIns.length >= 2) {
+      const curr = checkIns[0];
+      const prev = checkIns[1];
+      if (curr.stats && prev.stats && curr.stats.weeklyLogs > prev.stats.weeklyLogs) {
+        msgs.push({ icon: '📈', text: `More logs this week than last. The trend is up.`, priority: 4 });
+      }
+    }
+
+    // Milestone counts
+    if (totalActivityCount >= 100 && totalActivityCount < 110) msgs.push({ icon: '💯', text: '100+ entries logged. That\'s serious commitment.', priority: 7 });
+    else if (totalActivityCount >= 50 && totalActivityCount < 55) msgs.push({ icon: '🎉', text: '50 entries milestone! Halfway to the century.', priority: 6 });
+
+    // No goals set — onboarding nudge
+    if (periodTrackableGoals.length === 0) msgs.push({ icon: '🎯', text: 'Set your first goal in Settings to get tailored guidance.', priority: 3 });
+
+    // Default fallback
+    if (!msgs.length) msgs.push({ icon: '💡', text: 'Every small step counts. Progress is progress.', priority: 1 });
+
+    // Return highest priority message
+    msgs.sort((a, b) => b.priority - a.priority);
+    return msgs[0];
+  }, [activityStreakDays, todayActivityCount, remainingToday, totalActivityCount, focusGoals, periodTrackableGoals, completedPeriodGoals, categoryRings, lastCheckIn, currentWeek, data.weeklyCheckIns?.entries, dailyTarget]);
+
+  const prevEncRef = useRef(null);
+  useEffect(() => {
+    if (encouragement && encouragement.text !== prevEncRef.current) {
+      trackEvent('encouragement_shown', { type: 'card', message: encouragement.text });
+      prevEncRef.current = encouragement.text;
+    }
+  }, [encouragement]);
+
   const activeAreaGoals = activeGoalCategory?.goals || [];
   const activeAreaTrackableGoals = activeAreaGoals.filter((goal) => !isTargetGoalPeriod(goal.period) && Number(goal.target || 0) > 0);
   const activeAreaCompleted = activeAreaTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
@@ -1156,6 +1228,12 @@ function App() {
               </div>
             </section>
           )}
+
+          {/* ── ENCOURAGEMENT CARD ───────────────────────────── */}
+          <section className="card dash-encouragement-card">
+            <span className="dash-encouragement-icon">{encouragement.icon}</span>
+            <p className="dash-encouragement-text">{encouragement.text}</p>
+          </section>
 
           {/* ── COLLAPSIBLE: THIS WEEK ───────────────────────── */}
           <section className="card dash-collapse-card dash-collapse-week">

@@ -2067,6 +2067,31 @@ input:focus, textarea:focus, select:focus {
 }
 /* â”€â”€ Collapsible section cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
+/* -- Encouragement card -------------------------------- */
+.dash-encouragement-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--brand-grad-hero);
+  border: 1.5px solid var(--tint-200);
+  padding: 14px 18px;
+  border-radius: var(--radius-lg, 16px);
+}
+
+.dash-encouragement-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.dash-encouragement-text {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--hero-text, var(--text));
+  line-height: 1.4;
+}
+
 .dash-collapse-card {
   padding: 0;
   overflow: hidden;
@@ -2164,6 +2189,7 @@ input:focus, textarea:focus, select:focus {
 /* ── Grid full-width spans ─────────────────────── */
 .dash-hero-card,
 .dash-nba-card,
+.dash-encouragement-card,
 .dash-collapse-week,
 .dash-collapse-today,
 .dash-collapse-goals,
