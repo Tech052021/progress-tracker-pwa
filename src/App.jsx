@@ -180,7 +180,7 @@ const defaultData = {
     weights: [],
     leetcode: [],
     uvm: [],
-    ai: [],
+    journal: [],
     mentor: [],
     bugs: [],
     pool: [],
@@ -451,7 +451,7 @@ function App() {
 
   const monthStats = {
     uvm: data.entries.uvm.filter((x) => x.date.startsWith(currentMonth)).length,
-    ai: data.entries.ai.filter((x) => x.date.startsWith(currentMonth)).length,
+    journal: (data.entries.journal || data.entries.ai || []).filter((x) => x.date.startsWith(currentMonth)).length,
     bugs: data.entries.bugs.filter((x) => x.date.startsWith(currentMonth)).length,
     mentor: data.entries.mentor.filter((x) => x.date.startsWith(currentMonth)).length
   };
@@ -703,7 +703,7 @@ function App() {
     if (n.includes('weight')) return 'weights';
     if (n.includes('leetcode')) return 'leetcode';
     if (n.includes('uvm')) return 'uvm';
-    if (n.includes('ai')) return 'ai';
+    if (n.includes('journal') || n.includes('journey') || n.includes('ai')) return 'journal';
     if (n.includes('bug') || n.includes('bugs')) return 'bugs';
     if (n.includes('mentor')) return 'mentor';
     if (n.includes('pool')) return 'pool';
@@ -1418,7 +1418,7 @@ function App() {
                     has('leetcode')&& { key: 'leetcode',label: 'LeetCode',form: <LeetCodeForm onSave={(e) => { addEntry('leetcode', e); close(); }} /> },
                     has('pool')    && { key: 'pool',    label: 'Pool',    form: <PoolForm    onSave={(e) => { addEntry('pool', e);     close(); }} /> },
                     has('uvm')     && { key: 'uvm',     label: 'UVM',     form: <UVMForm     onSave={(e) => { addEntry('uvm', e);      close(); }} /> },
-                    has('ai')      && { key: 'ai',      label: 'AI',      form: <AIForm      onSave={(e) => { addEntry('ai', e);       close(); }} /> },
+                    (has('journal') || has('journey') || has('ai')) && { key: 'journal', label: 'Journal', form: <JournalForm onSave={(e) => { addEntry('journal', e); close(); }} /> },
                     has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
                     has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
                   ].filter(Boolean);
@@ -1685,16 +1685,16 @@ function UVMForm({ onSave }) {
   );
 }
 
-function AIForm({ onSave }) {
+function JournalForm({ onSave }) {
   const [date, setDate] = useState(ISO_DATE());
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   return (
-    <BaseForm title="AI experiment">
+    <BaseForm title="Journal entry">
       <DateField value={date} onChange={setDate} />
-      <TextField label="Experiment" value={title} onChange={setTitle} />
-      <TextAreaField label="What did you try?" value={notes} onChange={setNotes} />
-      <button className="primary" onClick={() => { if (!title) return; onSave({ date, title, notes }); setTitle(''); setNotes(''); }}>Save AI experiment</button>
+      <TextField label="What happened today?" value={title} onChange={setTitle} />
+      <TextAreaField label="Thoughts, reflections, lessons learned" value={notes} onChange={setNotes} />
+      <button className="primary" onClick={() => { if (!title) return; onSave({ date, title, notes }); setTitle(''); setNotes(''); }}>Save journal entry</button>
     </BaseForm>
   );
 }
