@@ -76,7 +76,7 @@ button, input, textarea, select { font: inherit; }
 }
 
 .hero, .card {
-  background: rgba(255,255,255,0.92);
+  background: var(--tint-50);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -1997,7 +1997,7 @@ input:focus, textarea:focus, select:focus {
 
 .dash-today-item-meta {
   font-size: 13px;
-  color: #64748b;
+  color: var(--text-brand-dark);
   white-space: nowrap;
   font-weight: 600;
 }
@@ -2015,6 +2015,7 @@ input:focus, textarea:focus, select:focus {
 .dash-hero-card,
 .dash-nba-card,
 .dash-collapse-week,
+.dash-collapse-today,
 .dash-collapse-goals {
   grid-column: 1 / -1;
 }

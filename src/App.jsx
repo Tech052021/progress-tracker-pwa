@@ -961,6 +961,26 @@ function App() {
       {tab === 'dashboard' && (
         <section className="card-grid dashboard-redesign">
 
+          {/* ── NEXT BEST ACTION CARD ────────────────────────── */}
+          {nextBestAction && (
+            <section className="card dash-nba-card">
+              <div className="dash-nba-eyebrow">👉 Next best action</div>
+              <div className="dash-nba-content">
+                <div className="dash-nba-text">
+                  <h3 className="dash-nba-title">{nextBestAction.name}</h3>
+                  <p className="dash-nba-why">
+                    {nextBestAction.remaining} {nextBestAction.unit && nextBestAction.unit !== 'count' ? nextBestAction.unit : 'left'} remaining · {nextBestAction.category}
+                    {activityStreakDays > 0 ? ' · Keeps your streak alive' : ''}
+                  </p>
+                </div>
+                <div className="dash-nba-actions">
+                  <button className="primary" onClick={() => setTab('log')}>Start now</button>
+                  <button className="secondary" onClick={() => setSkippedGoalIds((prev) => [...prev, nextBestAction.id])}>Skip</button>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* ── GREETING HERO CARD ───────────────────────────── */}
           <section className="card dash-hero-card">
             <div className="dash-greeting-row">
@@ -995,26 +1015,6 @@ function App() {
               </div>
             )}
           </section>
-
-          {/* ── NEXT BEST ACTION CARD ────────────────────────── */}
-          {nextBestAction && (
-            <section className="card dash-nba-card">
-              <div className="dash-nba-eyebrow">👉 Next best action</div>
-              <div className="dash-nba-content">
-                <div className="dash-nba-text">
-                  <h3 className="dash-nba-title">{nextBestAction.name}</h3>
-                  <p className="dash-nba-why">
-                    {nextBestAction.remaining} {nextBestAction.unit && nextBestAction.unit !== 'count' ? nextBestAction.unit : 'left'} remaining · {nextBestAction.category}
-                    {activityStreakDays > 0 ? ' · Keeps your streak alive' : ''}
-                  </p>
-                </div>
-                <div className="dash-nba-actions">
-                  <button className="primary" onClick={() => setTab('log')}>Start now</button>
-                  <button className="secondary" onClick={() => setSkippedGoalIds((prev) => [...prev, nextBestAction.id])}>Skip</button>
-                </div>
-              </div>
-            </section>
-          )}
 
           {/* ── COLLAPSIBLE: THIS WEEK ───────────────────────── */}
           <section className="card dash-collapse-card dash-collapse-week">
