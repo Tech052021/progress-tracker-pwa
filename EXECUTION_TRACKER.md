@@ -34,7 +34,8 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 | Baseline and check-ins | Before/after reference timeline per goal | 2 | Not started | Needed for meaningful analysis and motivation |
 | Encouragement engine | Trigger messages from progress + consistency + baseline | 2 | Not started | Positive tone only, anti-spam limits |
 | Notification preferences | Channel and timing controls | 2 | Not started | UI first, sending later |
-| Authentication | Sign up, sign in, sign out, session handling | 3 | Not started | Supabase-first path |
+| Authentication | Sign up, sign in, sign out, session handling | 3 | Not started | Supabase-first path. **Must capture schedule profile during onboarding (see Section 14 design note)** |
+| Schedule-aware recommendations | Use working/non-working day schedule to surface context-aware Next Best Actions | 3 | Not started | Schedule data collected at account creation; drives daily action suggestions and pacing |
 | Cloud sync | Per-user data sync and offline-safe behavior | 3 | Not started | Include conflict-safe merge |
 | Guest-to-account merge | Keep local data when user signs in | 3 | Not started | Must be non-destructive |
 | Beta hardening | Performance, reliability, bug triage | 4 | Not started | Gate for private access |
@@ -155,7 +156,7 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 
 ## 11) Next 3 Sessions (Concrete)
 
-1. Session E-Resume (2h): Add baseline/check-in schema draft for outcome tracking and wire minimal read/write paths.
+1. Session E-Resume (2h): Expand baseline/check-in schema with read/write paths and a minimal check-in UI card on dashboard.
 2. Session F (2h): Add event instrumentation for planner create/apply/regenerate and goals-inline-progress updates.
 3. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
 
@@ -191,3 +192,37 @@ At the end of every session:
 4. Add blockers and next concrete task.
 
 This file is the source of truth for what is done and what is remaining.
+
+## 14) Design Decisions (Future Implementation Notes)
+
+### Schedule-Aware Recommendations (Phase 3 — Account Creation)
+
+**Decision (2026-03-30):** The "Next Best Action" card on the dashboard should be schedule-aware, not just data-aware.
+
+**Problem it solves:**
+Suggesting a 45-minute career block on a Sunday is unhelpful. Suggesting a workout on a work-from-home day is different from an office day. Without knowing the user's week shape, recommendations are blind to context.
+
+**What to capture during account creation (onboarding step):**
+- Working days (e.g. Mon–Fri) vs non-working days (Sat–Sun)
+- Typical available time per day type (e.g. 60 min on workdays, 2 hr on weekends)
+- Optional: early morning / evening preference
+- Optional: any fixed blocked days (travel, recurring commitments)
+
+**How to use it:**
+- On working days: surface career/learning goals first
+- On non-working days: surface health/hobby goals first
+- Account for available time when choosing which goal to recommend (don't suggest a 2-hour task on a 30-min day)
+- Feed this schedule context into the encouragement engine (Phase 2 G) and the pacing calculations
+
+**Schema shape (draft, to be finalized in Phase 3):**
+```json
+{
+  "schedule": {
+    "workingDays": ["mon", "tue", "wed", "thu", "fri"],
+    "availableMinutes": { "workday": 60, "offday": 120 },
+    "preferredTime": "evening"
+  }
+}
+```
+
+**Implementation gate:** Do not implement custom logic for this before account creation (Phase 3). For MVP local-first mode, treat every day equally. Mark this as Phase 3 dependency when wiring the NBA algorithm in Session F.

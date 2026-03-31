@@ -1,9 +1,10 @@
 import * as React from 'react';
 // ensure `React` is available at runtime for any classic-jsx compiled code
 try { window.React = React; } catch (e) { /* noop on non-browser */ }
-const { useEffect, useMemo, useState } = React;
+const { useEffect, useMemo, useState, useRef } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
+import { useTheme } from './useTheme';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
 const DATA_VERSION = 2;
@@ -185,7 +186,9 @@ const defaultData = {
     pool: [],
     goalUpdates: [],
     weeklyNotes: []
-  }
+  },
+  baseline: { entries: [] },
+  weeklyCheckIns: { entries: [] }
 };
 
 function NextStrideLogo() {
@@ -245,6 +248,13 @@ function NextStrideLogo() {
       />
     </svg>
   );
+}
+
+function getGreeting(name) {
+  const h = new Date().getHours();
+  const prefix = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const first = name ? name.trim().split(/\s+/)[0] : '';
+  return first ? `${prefix}, ${first}` : prefix;
 }
 
 function normalizeData(raw) {
@@ -313,6 +323,12 @@ function normalizeData(raw) {
           normalizeEntryList(entries)
         ])
       )
+    },
+    baseline: {
+      entries: Array.isArray(incoming.baseline?.entries) ? incoming.baseline.entries : []
+    },
+    weeklyCheckIns: {
+      entries: Array.isArray(incoming.weeklyCheckIns?.entries) ? incoming.weeklyCheckIns.entries : []
     }
   };
 }
@@ -360,11 +376,24 @@ function App() {
   const [tab, setTab] = useState('dashboard');
   const [dashLogOpen, setDashLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
+  const navMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showNavMenu) return;
+    function handleOutside(e) {
+      if (navMenuRef.current && !navMenuRef.current.contains(e.target)) setShowNavMenu(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [showNavMenu]);
+  const { activeTheme, setActiveTheme, themes: themeMap } = useTheme();
   const [activeGoalCategoryId, setActiveGoalCategoryId] = useState(null);
   const [roadmapView, setRoadmapView] = useState('roadmap');
   const [progressView, setProgressView] = useState('goals');
   const [logView, setLogView] = useState('capture');
   const [goalUpdateDrafts, setGoalUpdateDrafts] = useState({});
+  const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false });
+  const [skippedGoalIds, setSkippedGoalIds] = useState([]);
 
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
@@ -592,6 +621,34 @@ function App() {
     : remainingToday === 1
       ? 'One more action and today is a win.'
       : `${remainingToday} actions left to complete today.`;
+
+  const greeting = getGreeting(data.profile?.ownerName);
+
+  const categoryRings = useMemo(() => {
+    const colors = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
+    return normalizedCategories.map((category, i) => {
+      const trackable = (category.goals || []).filter((g) => !isTargetGoalPeriod(g.period) && Number(g.target || 0) > 0);
+      const completed = trackable.filter((g) => goalCount(g) >= Number(g.target || 0)).length;
+      const pct = trackable.length ? Math.round((completed / trackable.length) * 100) : 0;
+      return { id: category.id, name: category.name, completed, total: trackable.length, pct, color: colors[i % colors.length] };
+    });
+  }, [normalizedCategories, data.entries, currentWeek, currentMonth]);
+
+  const nextBestAction = useMemo(() => {
+    const candidates = normalizedCategories.flatMap((category) =>
+      (category.goals || [])
+        .filter((g) => !isTargetGoalPeriod(g.period) && Number(g.target || 0) > 0)
+        .map((g) => {
+          const current = goalCount(g);
+          const target = Number(g.target || 0);
+          return { id: g.id, name: g.name, category: category.name, unit: g.unit, current, target, remaining: Math.max(0, target - current) };
+        })
+    ).filter((g) => g.remaining > 0 && !skippedGoalIds.includes(g.id));
+    if (!candidates.length) return null;
+    return candidates.sort((a, b) => (b.current / Math.max(1, b.target)) - (a.current / Math.max(1, a.target)))[0];
+  }, [normalizedCategories, data.entries, currentWeek, currentMonth, skippedGoalIds]);
+
+  const toggleSection = (key) => setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const achievements = [
     { id: 'first-log', label: 'First Step', hint: 'Create your first log entry', unlocked: totalActivityCount >= 1 },
@@ -844,102 +901,185 @@ function App() {
   return (
     <div className="app-shell">
       <header className="hero">
-        <div>
+        <div className="nav-menu-wrap hero-menu-anchor" ref={navMenuRef}>
+          <button
+            className="nav-menu-btn"
+            onClick={() => setShowNavMenu(s => !s)}
+            aria-label="Open navigation"
+            aria-expanded={showNavMenu}
+          >
+            {tab !== 'dashboard' && (
+              <span className="nav-current-label">
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </span>
+            )}
+            <span>···</span>
+          </button>
+          {showNavMenu && (
+            <div className="nav-menu-dropdown" role="menu">
+              {[
+                ['dashboard', '🏠', 'Dashboard'],
+                ['goals',     '🎯', 'Goals'],
+                ['roadmap',   '🗺️', 'Roadmap'],
+                ['progress',  '📈', 'Progress'],
+                ['log',       '✏️',  'Log'],
+              ].map(([id, emoji, label]) => (
+                <button
+                  key={id}
+                  className={`nav-menu-item${tab === id ? ' active' : ''}`}
+                  onClick={() => { setTab(id); setShowSettings(false); setShowNavMenu(false); }}
+                  role="menuitem"
+                >
+                  <span>{emoji}</span> {label}
+                </button>
+              ))}
+              <div className="nav-menu-divider" />
+              <button
+                className="nav-menu-item"
+                onClick={() => { setShowSettings(s => !s); setShowNavMenu(false); }}
+                role="menuitem"
+              >
+                <span>⚙️</span> Settings
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="hero-brand-group">
           <div className="brand-lockup" aria-label="NextStride logo and wordmark">
             <NextStrideLogo />
             <span className="brand-wordmark">NextStride</span>
           </div>
-          <p className="hero-copy">
-            Build momentum across career, health, learning, and habit; even when going gets tough !!!
+          <p className="hero-copy hero-copy-compact">
+            Build momentum across career, health, learning, and habit; even when going gets tough.
           </p>
-          <div className="tabs hero-nav-tabs" role="tablist" aria-label="Primary app navigation">
-            {[
-              ['dashboard', 'Dashboard'],
-              ['goals', 'Goals'],
-              ['roadmap', 'Roadmap'],
-              ['progress', 'Progress'],
-              ['log', 'Log']
-            ].map(([id, label]) => (
-              <button key={id} className={tab === id ? 'tab active' : 'tab'} onClick={() => { setTab(id); setShowSettings(false); }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {allTrackedGoals.length > 0 && (
-            <div className="hero-badges">
-              {tabBadges.map((label) => (
-                <span className="badge" key={label}>{label}</span>
-              ))}
-            </div>
-          )}
         </div>
         <div className="hero-actions">
           <Clock />
-          <button className="secondary settings-btn" onClick={() => setShowSettings(s => !s)}>{showSettings ? 'Close settings' : 'Settings'}</button>
         </div>
       </header>
 
       {tab === 'dashboard' && (
-        <section className="card-grid two-up">
-          <section className="card momentum-card">
-            <div className="card-head">
-              <h2>Today momentum</h2>
-              <p>Clear daily target and streak to keep you consistent.</p>
-            </div>
-            {todayActivityCount >= dailyTarget && (
-              <div className="momentum-burst" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-            )}
-            <div className="momentum-header">
+        <section className="card-grid dashboard-redesign">
+
+          {/* ── GREETING HERO CARD ───────────────────────────── */}
+          <section className="card dash-hero-card">
+            <div className="dash-greeting-row">
               <div>
-                <p className="momentum-kicker">Daily target</p>
-                <h3 className="momentum-value">{todayActivityCount}/{dailyTarget}</h3>
+                <h2 className="dash-greeting">{greeting}</h2>
+                <p className="dash-greeting-sub">{momentumMessage}</p>
               </div>
-              <span className={todayActivityCount >= dailyTarget ? 'streak-pill hot' : 'streak-pill'}>
-                {activityStreakDays} day streak
+              <span className={activityStreakDays > 0 ? 'streak-pill hot' : 'streak-pill'}>
+                🔥 {activityStreakDays} day streak
               </span>
             </div>
-            <div className="progress-track"><div className="progress-fill" style={{ width: `${todayProgressPct}%` }} /></div>
-            <p className="momentum-message">{momentumMessage}</p>
-            <div className="snapshot-row"><span>Last 7 days activity</span><strong>{weeklyActivityCount} logs</strong></div>
-            <button className="primary" onClick={() => setTab('log')}>Log now</button>
-          </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2>Today focus</h2>
-              <p>Only what you should care about right now.</p>
+            <div className="dash-today-row">
+              <div className="dash-today-progress">
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${todayProgressPct}%` }} />
+                </div>
+                <span className="dash-today-label">{todayActivityCount}/{dailyTarget} done today</span>
+              </div>
+              <button className="primary dash-log-btn" onClick={() => setTab('log')}>Log now</button>
             </div>
-            {focusGoals.length ? (
-              <div className="entry-list">
-                {focusGoals.map((goal) => (
-                  <article className="entry-card" key={goal.id}>
-                    <div className="entry-top">
-                      <span className="chip">{goal.category}</span>
-                      <span className="entry-date">{formatGoalWindowLabel(goal.period)}</span>
+            {categoryRings.length > 0 && (
+              <div className="dash-category-rings">
+                {categoryRings.map((ring) => (
+                  <div key={ring.id} className="dash-ring-item" onClick={() => { setTab('goals'); setActiveGoalCategoryId(ring.id); }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setTab('goals')}>
+                    <div className="dash-ring-label">{ring.name}</div>
+                    <div className="dash-ring-track">
+                      <div className="dash-ring-fill" style={{ width: `${ring.pct}%`, background: ring.color }} />
                     </div>
-                    <h4>{goal.name}</h4>
-                    <p>
-                      {goal.current}/{goal.target} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}
-                      {goal.remaining > 0 ? ` · ${goal.remaining} left` : ' · complete'}
-                    </p>
-                  </article>
+                    <div className="dash-ring-pct" style={{ color: ring.color }}>{ring.pct}%</div>
+                  </div>
                 ))}
               </div>
-            ) : (
-              <div className="empty-state">Open Goals to define the areas you want to track.</div>
             )}
-            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
-              <button className="secondary" onClick={() => setTab('progress')}>View analytics</button>
-              <button className="secondary" onClick={() => setTab('log')}>Open log</button>
-            </div>
           </section>
+
+          {/* ── NEXT BEST ACTION CARD ────────────────────────── */}
+          {nextBestAction && (
+            <section className="card dash-nba-card">
+              <div className="dash-nba-eyebrow">👉 Next best action</div>
+              <div className="dash-nba-content">
+                <div className="dash-nba-text">
+                  <h3 className="dash-nba-title">{nextBestAction.name}</h3>
+                  <p className="dash-nba-why">
+                    {nextBestAction.remaining} {nextBestAction.unit && nextBestAction.unit !== 'count' ? nextBestAction.unit : 'left'} remaining · {nextBestAction.category}
+                    {activityStreakDays > 0 ? ' · Keeps your streak alive' : ''}
+                  </p>
+                </div>
+                <div className="dash-nba-actions">
+                  <button className="primary" onClick={() => setTab('log')}>Start now</button>
+                  <button className="secondary" onClick={() => setSkippedGoalIds((prev) => [...prev, nextBestAction.id])}>Skip</button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── COLLAPSIBLE: THIS WEEK ───────────────────────── */}
+          <section className="card dash-collapse-card dash-collapse-week">
+            <button className="dash-collapse-header" onClick={() => toggleSection('week')} aria-expanded={expandedSections.week}>
+              <span>📊 This Week <span className="dash-collapse-badge">{weeklyActivityCount} logs</span></span>
+              <span className="dash-collapse-chevron">{expandedSections.week ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.week && (
+              <div className="dash-collapse-body">
+                <div className="snapshot-row"><span>Activity logs this week</span><strong>{weeklyActivityCount}</strong></div>
+                <div className="snapshot-row"><span>Current streak</span><strong>{activityStreakDays} day{activityStreakDays !== 1 ? 's' : ''}</strong></div>
+                <div className="snapshot-row"><span>Action items complete</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
+                <div className="snapshot-row"><span>Goals on pace this period</span><strong>{completedPeriodGoals}/{periodTrackableGoals.length}</strong></div>
+              </div>
+            )}
+          </section>
+
+          {/* ── COLLAPSIBLE: TODAY ───────────────────────────── */}
+          <section className="card dash-collapse-card dash-collapse-today">
+            <button className="dash-collapse-header" onClick={() => toggleSection('today')} aria-expanded={expandedSections.today}>
+              <span>📅 Today <span className="dash-collapse-badge">{todayActivityCount}/{dailyTarget} done</span></span>
+              <span className="dash-collapse-chevron">{expandedSections.today ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.today && (
+              <div className="dash-collapse-body">
+                {focusGoals.length ? focusGoals.map((goal) => (
+                  <div key={goal.id} className="dash-today-item">
+                    <span className={goal.remaining <= 0 ? 'dash-today-check done' : 'dash-today-check'}>{goal.remaining <= 0 ? '✓' : '○'}</span>
+                    <span className="dash-today-item-name">{goal.name}</span>
+                    <span className="dash-today-item-meta">{goal.current}/{goal.target}{goal.unit && goal.unit !== 'count' ? ` ${goal.unit}` : ''}</span>
+                  </div>
+                )) : (
+                  <div className="empty-state" style={{ minHeight: 60 }}>No goals configured yet. Add goals in Settings.</div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ── COLLAPSIBLE: GOALS ───────────────────────────── */}
+          <section className="card dash-collapse-card dash-collapse-goals">
+            <button className="dash-collapse-header" onClick={() => toggleSection('goals')} aria-expanded={expandedSections.goals}>
+              <span>🎯 Goals <span className="dash-collapse-badge">{completedPeriodGoals}/{periodTrackableGoals.length} on pace</span></span>
+              <span className="dash-collapse-chevron">{expandedSections.goals ? '▾' : '▸'}</span>
+            </button>
+            {expandedSections.goals && (
+              <div className="dash-collapse-body">
+                {categoryRings.length ? categoryRings.map((ring) => (
+                  <div key={ring.id} className="snapshot-row dash-goals-row" onClick={() => { setTab('goals'); setActiveGoalCategoryId(ring.id); }} style={{ cursor: 'pointer' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="dash-ring-dot" style={{ background: ring.color }} />
+                      {ring.name}
+                    </span>
+                    <strong>{ring.completed}/{ring.total || 0} goals</strong>
+                  </div>
+                )) : (
+                  <div className="empty-state" style={{ minHeight: 60 }}>No goals yet.</div>
+                )}
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
+                  <button className="secondary" onClick={() => setTab('progress')}>View progress</button>
+                </div>
+              </div>
+            )}
+          </section>
+
         </section>
       )}
 
@@ -1317,6 +1457,9 @@ function App() {
           onClose={() => setShowSettings(false)}
           onExportData={exportData}
           onImportData={importData}
+          activeTheme={activeTheme}
+          setActiveTheme={setActiveTheme}
+          themeMap={themeMap}
         />
       )}
     </div>

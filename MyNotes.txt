@@ -1,0 +1,106 @@
+########################################################
+#milestone Achived: (March 29th 2026)
+#commit f700dfb5d1b824678d2fcff1baae56259360a6a8 (HEAD -> main)
+#Author: Tech052021 <stocktrading052021@gmail.com>
+#Date:   Sun Mar 29 21:56:17 2026 -0700
+#######################################################
+Here is what the app can do right now, and what the GUI supports.
+
+**Core App Capabilities (Current)**
+1. Track progress across multiple areas using categories (for example Health, Career, Hobby).
+2. Define measurable goals per category with:
+- target value
+- unit
+- frequency period (day/week/month/year/hour/minute/target)
+- optional victory date
+3. Log day-to-day activity and see progress against goals.
+4. View dashboard summary cards for key goals (for example cardio, protein, water, sleep).
+5. Use a planner assistant to generate a draft category plan from natural-language input.
+6. Regenerate the last planner draft safely before applying.
+7. Keep planner-generated milestones and action steps in roadmap-style views.
+8. Apply settings and goal updates with migration-safe behavior.
+9. Run as a PWA-style web app (installable/offline-friendly shell behavior).
+
+**Planner/Generation Capabilities**
+1. Intake form supports goal type (general, weight/health, study/class, career/business).
+2. Timeline uses target date input and computes internal timeline estimates.
+3. Weight/health planning includes concrete targets (not vague):
+- protein daily grams
+- water daily liters
+- sleep daily hours
+4. Feasibility feedback gives a “gentle reality check” when targets are too aggressive.
+5. Draft preview shows:
+- suggested goals
+- suggested milestones
+- first action steps
+6. Draft application supports append and replace behavior without destructive overwrites.
+
+**GUI Capabilities**
+1. Clean card-based dashboard with key metrics and streak context.
+2. Settings modal with focused sections for long-term profile and categories/goals.
+3. Category editor with inline goal rows and quick shortcuts:
+- unit quick chips
+- period quick chips
+- inline hint text for health-style goals
+4. Layered modal system:
+- active popup owns scroll
+- nested popup sizes are dynamically computed from parent modal size
+- background layers stay locked when deeper popup is open
+5. Responsive behavior for desktop and mobile viewport ranges.
+6. Sticky/fixed action areas in forms where needed (Cancel/Apply, Generate flows).
+
+**What It Does Not Fully Do Yet (Important)**
+1. Full cloud account sync and cross-device auth flow are not complete yet.
+2. Notification channels are not fully implemented.
+3. “Goal mode” flexibility you proposed (none/single/multi long-term intent) is not yet implemented as a formal model.
+
+######################################################
+
+CHECKPOINT UPDATE (March 29th 2026)
+-----------------------------------
+Checkpoint intent: Stop here and restart from Session E-Resume next work block.
+
+Current git status at checkpoint:
+- Branch: main...origin/main
+- Modified: EXECUTION_TRACKER.md
+- Untracked: MyNotes.txt
+
+Exact commit and push commands for this checkpoint:
+1) git add EXECUTION_TRACKER.md MyNotes.txt
+2) git commit -m "chore: add restart checkpoint and execution drift notes"
+3) git push
+
+Restart point when we resume:
+- Start with Session E-Resume (baseline/check-in schema draft + minimal read/write wiring).
+
+######################################################
+
+CHECKPOINT UPDATE (March 30th 2026)
+-----------------------------------
+Checkpoint intent: lock current UX/data-fix iteration and push a stable checkpoint.
+
+What was completed in this checkpoint:
+1) Goals UI made more compact and responsive (single-row summary, cleaner category tabs, better mobile behavior).
+2) Weekly checklist improved with compact labels in date/day format (example: 30th/Mon).
+3) Goal-card layout unified across milestone and trackable goals.
+4) Data bug fixed: deleted/recreated categories/goals no longer reuse old progress unexpectedly.
+5) Counting guard added: goals do not inherit legacy bucket logs unless explicitly configured for bucket tracking.
+
+Current git status at checkpoint:
+- Branch: main...origin/main
+- Modified: src/App.jsx
+- Modified: src/components/SettingsEditor.jsx
+- Modified: src/styles.css
+- Modified: EXECUTION_TRACKER.md
+- Modified: MyNotes.txt
+
+Suggested commit message:
+"feat: polish goals UX, weekly checklist labels, and progress data integrity"
+
+Exact commit and push commands for this checkpoint:
+1) git add src/App.jsx src/components/SettingsEditor.jsx src/styles.css EXECUTION_TRACKER.md MyNotes.txt
+2) git commit -m "feat: polish goals UX, weekly checklist labels, and progress data integrity"
+3) git push
+
+Restart point when we resume:
+- Resume Session E-Resume baseline/check-in schema draft before any new major UI restructuring.

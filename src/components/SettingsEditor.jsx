@@ -234,7 +234,7 @@ function getWeeksUntilTargetDate(targetDate) {
 }
 
 
-export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData }) {
+export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData, activeTheme, setActiveTheme, themeMap }) {
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
@@ -492,6 +492,29 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
   return (
     <div className="modal-backdrop">
       <div ref={settingsModalRef} className={`modal-content ${hasSubmodalOpen ? 'modal-content-submodal-open' : ''}`} onClick={(e) => e.stopPropagation()}>
+        {themeMap && setActiveTheme && (
+          <section className="card stack-gap theme-picker-card">
+            <div className="card-head">
+              <h2>Appearance</h2>
+              <p>Pick a colour theme. Changes apply instantly and persist across sessions.</p>
+            </div>
+            <div className="theme-swatch-row">
+              {Object.entries(themeMap).map(([key, def]) => (
+                <button
+                  key={key}
+                  className={`theme-swatch-btn${activeTheme === key ? ' active' : ''}`}
+                  title={def.label}
+                  onClick={() => setActiveTheme(key)}
+                  style={{ '--swatch-brand': def['--brand'], '--swatch-accent': def['--brand-accent'] }}
+                >
+                  <span className="theme-swatch-dot" />
+                  <span className="theme-swatch-label">{def.emoji} {def.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="card stack-gap">
           <div className="card-head">
             <h2>Goals</h2>
