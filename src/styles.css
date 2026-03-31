@@ -177,6 +177,45 @@ button, input, textarea, select { font: inherit; }
   border-radius: 14px;
 }
 
+/* ── Motivational Quote Splash ─────────────────────── */
+.quote-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: welcomeFadeIn 0.3s ease;
+}
+.quote-popup {
+  background: var(--brand-grad-hero);
+  border-radius: 24px;
+  padding: 40px 28px 32px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 56px rgba(0,0,0,0.35);
+  animation: welcomeSlideUp 0.35s ease;
+  color: var(--hero-text);
+}
+.quote-text {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 0 28px;
+  font-style: italic;
+  opacity: 0.9;
+}
+.quote-dismiss {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 14px;
+}
+
 .hero, .card {
   background: var(--brand-grad-hero);
   backdrop-filter: blur(14px);

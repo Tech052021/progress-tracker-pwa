@@ -394,7 +394,31 @@ function App() {
   const [goalUpdateDrafts, setGoalUpdateDrafts] = useState({});
   const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false });
   const [skippedGoalIds, setSkippedGoalIds] = useState([]);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    const stored = localStorage.getItem('nextstride_welcome');
+    if (!stored) return true;
+    const { date, hasNewWork } = JSON.parse(stored);
+    if (date !== ISO_DATE()) return true;
+    if (hasNewWork) return true;
+    return false;
+  });
+
+  const [showQuote, setShowQuote] = useState(() => !showWelcome);
+
+  const dismissWelcome = () => {
+    setShowWelcome(false);
+    localStorage.setItem('nextstride_welcome', JSON.stringify({
+      date: ISO_DATE(),
+      hasNewWork: false,
+    }));
+  };
+
+  // Auto-dismiss motivational quote after 5 seconds
+  useEffect(() => {
+    if (!showQuote) return;
+    const timer = setTimeout(() => setShowQuote(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showQuote]);
 
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
@@ -407,6 +431,13 @@ function App() {
         [bucket]: [{ id: crypto.randomUUID(), ...entry, timestamp }, ...prev.entries[bucket]]
       }
     }));
+    // Show welcome popup again after new work is logged
+    const stored = localStorage.getItem('nextstride_welcome');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      parsed.hasNewWork = true;
+      localStorage.setItem('nextstride_welcome', JSON.stringify(parsed));
+    }
   };
 
   const removeEntry = (bucket, id) => {
@@ -959,16 +990,25 @@ function App() {
         </div>
       </header>
 
+      {/* ── MOTIVATIONAL QUOTE SPLASH ────────────────── */}
+      {showQuote && !showWelcome && (
+        <div className="quote-overlay" onClick={() => setShowQuote(false)}>
+          <div className="quote-popup">
+            <p className="quote-text">“{messageOfTheDay}”</p>
+            <button className="primary quote-dismiss" onClick={() => setShowQuote(false)}>Let’s go →</button>
+          </div>
+        </div>
+      )}
+
       {/* ── WELCOME SPLASH POPUP ───────────────────────── */}
       {showWelcome && (
-        <div className="welcome-overlay" onClick={() => setShowWelcome(false)}>
+        <div className="welcome-overlay" onClick={() => dismissWelcome()}>
           <div className="welcome-popup" onClick={(e) => e.stopPropagation()}>
             <div className="welcome-streak-ring">
               <span className="welcome-streak-num">{activityStreakDays}</span>
               <span className="welcome-streak-label">day streak</span>
             </div>
             <h2 className="welcome-greeting">{greeting}</h2>
-            <p className="welcome-message">{momentumMessage}</p>
             <div className="welcome-stats">
               <div className="welcome-stat">
                 <strong>{todayActivityCount}/{dailyTarget}</strong>
@@ -984,7 +1024,7 @@ function App() {
               </div>
             </div>
             <p className="welcome-motd">"{messageOfTheDay}"</p>
-            <button className="primary welcome-dismiss" onClick={() => setShowWelcome(false)}>Let's go →</button>
+            <button className="primary welcome-dismiss" onClick={() => dismissWelcome()}>Let's go →</button>
           </div>
         </div>
       )}
