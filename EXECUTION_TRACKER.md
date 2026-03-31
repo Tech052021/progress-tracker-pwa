@@ -32,7 +32,10 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 | Goal progress UX | Let users update goal progress directly from goals view | 1 | In progress | Added inline "Add progress" on goal cards and integrated manual updates into progress counting |
 | Category-scoped analysis | Ensure roadmap/progress are category-aware and understandable | 1 | In progress | Added category tabs and category-based filtering for roadmap and progress views |
 | Baseline and check-ins | Before/after reference timeline per goal | 2 | Not started | Needed for meaningful analysis and motivation |
-| Encouragement engine | Trigger messages from progress + consistency + baseline | 2 | Not started | Positive tone only, anti-spam limits |
+| Encouragement engine | Trigger messages from progress + consistency + baseline | 2 | Partially done | Welcome popup, motivational quote splash, and NBA card deliver early motivation layer; evidence-based context-aware messages still pending |
+| Theming and auto-contrast | Luminance-based hero text color and brand-grad-hero cards | 1 | Done | Auto-contrast keeps text readable on all 8 themes |
+| Welcome and quote popups | Temu-style welcome splash + random wisdom quote splash | 1 | Done | Welcome: once/day + after new work; Quote: 50 attributed quotes, random each open, user-dismissed |
+| Journal entry | Renamed AI form to Journal with reflection-focused prompts | 1 | Done | Bucket accepts 'journal', 'journey', or legacy 'ai' entries |
 | Notification preferences | Channel and timing controls | 2 | Not started | UI first, sending later |
 | Authentication | Sign up, sign in, sign out, session handling | 3 | Not started | Supabase-first path. **Must capture schedule profile during onboarding (see Section 14 design note)** |
 | Schedule-aware recommendations | Use working/non-working day schedule to surface context-aware Next Best Actions | 3 | Not started | Schedule data collected at account creation; drives daily action suggestions and pacing |
@@ -64,6 +67,7 @@ Use this format every work session.
 | 2026-03-29 (Session 16) | Close key goals UX gap | Added inline goal progress update controls in Goals cards; persisted manual updates and included them in counting logic | npm run build passed | This work was unplanned but required to meet "update progress in goals" requirement | Verify end-to-end counts for bucket-based and manual progress updates |
 | 2026-03-30 (Session 17) | Goals UX stabilization + responsive polish + data correctness fixes | Added weekly check calendar UX (including compact ordinal date labels), unified goal-row layout across goal types, simplified category tabs, improved mobile responsiveness, fixed deleted-category progress reuse, and removed implicit legacy bucket carryover so recreated goals start clean | Multiple npm run build validations passed across checkpoints | Scope still drifting from Session E baseline/check-in due to repeated UI refinement loops | Freeze UI changes and resume Session E baseline/check-in schema wiring |
 | 2026-03-30 (Session 18) | Category tabs visual distinction and tab/content separation | Added top border (2px #e2e8f0) and increased spacing between category tabs and goals content for clear visual hierarchy | npm run build passed (25.03 kB CSS, 212.57 kB JS gzipped, 1.06s build time) | None | Ready for checkpoint and Session E-Resume | 
+| 2026-03-30/31 (Session 19) | Dashboard UX polish and motivation layer | Auto-contrast theming (luminance-based hero text), brand-grad-hero on all cards, moved NBA above greeting, Today box full-width fix, Temu-style welcome splash popup (streak + stats + quote), removed hero card from dashboard, AI→Journal rename, smart welcome popup frequency (once/day + after new work), motivational quote splash popup with 50 attributed wisdom quotes (random each open, user-dismissed) | npm run build passed at each checkpoint | Execution drift: UI polish consumed planned Session E time | Freeze UI; begin Session E-Resume baseline/check-in schema |
 
 ### Execution Drift Summary (2026-03-29)
 
@@ -160,25 +164,24 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 2. Session F (2h): Add event instrumentation for planner create/apply/regenerate and goals-inline-progress updates.
 3. Session G (2h): Implement first encouragement rules using baseline/check-in + consistency signals.
 
-## 12) Restart Checkpoint (2026-03-30, Session 18)
+## 12) Restart Checkpoint (2026-03-31, Session 19)
 
 Use this as the exact restart point for the next work block.
 
-1. Branch state at checkpoint: `main...origin/main`.
-2. Working tree at checkpoint (Session 18 final):
-	- Modified: `src/App.jsx` (with weekly checklist, unified goal rows, category filtering)
-	- Modified: `src/components/SettingsEditor.jsx` (with orphaned goalUpdates cleanup)
-	- Modified: `src/styles.css` (with category tabs visual distinction: top border + spacing)
+1. Branch state at checkpoint: `main` pushed to origin.
+2. Working tree at checkpoint (Session 19 final):
+	- Modified: `src/App.jsx` — auto-contrast hero text tokens, welcome splash popup (once/day + after new work), motivational quote splash (50 random attributed quotes, user-dismissed), AI→Journal rename, NBA above greeting, hero card removed
+	- Modified: `src/styles.css` — brand-grad-hero on all cards, hero-text tokens on collapse sections, welcome-overlay/popup CSS, quote-overlay/popup/author CSS
+	- Modified: `src/components/themes.js` — `_getHeroTextColors()` luminance helper, `--hero-text` / `--hero-text-muted` tokens
 	- Modified: `EXECUTION_TRACKER.md`
 3. Functional state locked:
-	- Goals supports compact weekly checklist chips with ordinal labels (`30th/Mon`) and day/week checklist behavior.
-	- Goal cards use one consistent responsive header row across milestone and trackable goals.
-	- Category tabs in Goals are simplified to names only (no duplicate progress info).
-	- Clear visual separation between category tabs and content below via top border.
-	- Recreated categories/goals no longer inherit progress from deleted goals by implicit name bucket matching.
-	- Top navigation and goals UI re-tuned for responsive behavior on small screens.
+	- All 8 themes auto-compute readable text colors via HSL lightness analysis.
+	- Dashboard order: NBA → This Week → Today → Goals (no hero card).
+	- Welcome popup shows once per day or after logging new work (streak ring + stats + fixed quote).
+	- Quote popup shows every other open with a random wisdom quote from 50 curated entries; dismissed by tap/click only.
+	- Journal entry replaces AI entry (bucket: journal).
 4. Scope freeze for restart:
-	- No new UI restructuring before Session E-Resume baseline/check-in schema work starts.
+	- No new UI/UX/theme work until Session E-Resume baseline/check-in schema is complete.
 5. First task when resuming:
 	- Start with Session E-Resume from Section 11.
 
