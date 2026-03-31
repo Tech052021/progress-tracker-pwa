@@ -234,7 +234,7 @@ function getWeeksUntilTargetDate(targetDate) {
 }
 
 
-export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData, activeTheme, setActiveTheme, themeMap }) {
+export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData, activeTheme, setActiveTheme, themeMap, trackEvent }) {
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
@@ -373,6 +373,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     if (nextActiveId) setActiveCatId(nextActiveId);
     setLastGeneratedDraft({ draftId, intake: { ...planIntake }, categoryName: blueprint.categoryName });
     closePlanIntake();
+    if (trackEvent) trackEvent('plan_created', { mode, categoryName: blueprint.categoryName });
     alert(mode === 'replace' ? 'Draft plan regenerated. Review and edit before clicking Apply.' : 'Draft plan generated. Review and edit before clicking Apply.');
   };
 
@@ -393,10 +394,12 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     const newId = uid();
     setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '', createdAt: new Date().toISOString().slice(0, 10) }] } : c) }));
     setLastAddedGoalId(newId);
+    if (trackEvent) trackEvent('goal_added', { goalId: newId, categoryId: catId });
   };
 
   const removeGoal = (catId, goalId) => {
     if (!window.confirm('Delete this goal?')) return;
+    if (trackEvent) trackEvent('goal_deleted', { goalId, categoryId: catId });
     setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: c.goals.filter(g => g.id !== goalId) } : c) }));
   };
 
@@ -472,6 +475,8 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
         }))
       }
     }));
+    const goalsCount = categoriesToPersist.reduce((sum, c) => sum + (c.goals || []).length, 0);
+    if (trackEvent) trackEvent('settings_applied', { categoriesCount: categoriesToPersist.length, goalsCount });
     alert('Goals updated');
     if (typeof onClose === 'function') onClose();
   };

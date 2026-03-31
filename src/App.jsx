@@ -10,6 +10,18 @@ const STORAGE_KEY = 'progress_tracker_prod_v1';
 const DATA_VERSION = 2;
 const BACKUP_KEY_PREFIX = `${STORAGE_KEY}_backup_`;
 const ISO_DATE = () => new Date().toISOString().slice(0, 10);
+const EVENTS_KEY = 'nextstride_events';
+const MAX_EVENTS = 500;
+
+function trackEvent(name, props = {}) {
+  const event = { name, ts: new Date().toISOString(), ...props };
+  try {
+    const existing = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
+    existing.unshift(event);
+    if (existing.length > MAX_EVENTS) existing.length = MAX_EVENTS;
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(existing));
+  } catch { /* storage full — silently skip */ }
+}
 
 function inferGoalUnit(goalName, weightUnit = 'lb') {
   const n = String(goalName || '').toLowerCase();
@@ -416,15 +428,23 @@ function App() {
 
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
+  // Track encouragement popups on mount
+  useEffect(() => {
+    if (showWelcome) trackEvent('encouragement_shown', { popupType: 'welcome' });
+    else if (showQuote) trackEvent('encouragement_shown', { popupType: 'quote' });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const addEntry = (bucket, entry) => {
     const timestamp = entry.timestamp || createEntryTimestamp(entry.date);
+    const entryId = crypto.randomUUID();
     setData((prev) => ({
       ...prev,
       entries: {
         ...prev.entries,
-        [bucket]: [{ id: crypto.randomUUID(), ...entry, timestamp }, ...prev.entries[bucket]]
+        [bucket]: [{ id: entryId, ...entry, timestamp }, ...prev.entries[bucket]]
       }
     }));
+    trackEvent('log_added', { bucket, goalId: entry.goalId || null, date: entry.date });
     // Show welcome popup again after new work is logged
     const stored = localStorage.getItem('nextstride_welcome');
     if (stored) {
@@ -486,6 +506,13 @@ function App() {
   const dailyTarget = 3;
   const todayActivityCount = countEntriesOnDate(data.entries, today);
   const activityStreakDays = getActivityStreakDays(data.entries, today);
+  const prevStreakRef = useRef(activityStreakDays);
+  useEffect(() => {
+    if (activityStreakDays !== prevStreakRef.current) {
+      trackEvent('streak_updated', { previous: prevStreakRef.current, current: activityStreakDays });
+      prevStreakRef.current = activityStreakDays;
+    }
+  }, [activityStreakDays]);
   const weeklyActivityCount = getRecentActivityCount(data.entries, today, 7);
   const todayProgressPct = Math.min(100, Math.round((todayActivityCount / dailyTarget) * 100));
   const remainingToday = Math.max(0, dailyTarget - todayActivityCount);
@@ -924,6 +951,7 @@ function App() {
     link.download = `progress-tracker-backup-${ISO_DATE()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    trackEvent('export_used', { date: ISO_DATE(), categoriesCount: normalizedCategories.length });
   };
 
   const importData = async (event) => {
@@ -933,8 +961,10 @@ function App() {
     try {
       const parsed = JSON.parse(text);
       setData(normalizeData(parsed));
+      trackEvent('import_used', { date: ISO_DATE(), success: true });
       alert('Backup imported successfully.');
     } catch {
+      trackEvent('import_used', { date: ISO_DATE(), success: false });
       alert('Could not import that file. Please use a valid backup JSON.');
     }
     event.target.value = '';
@@ -1627,6 +1657,7 @@ function App() {
           activeTheme={activeTheme}
           setActiveTheme={setActiveTheme}
           themeMap={themeMap}
+          trackEvent={trackEvent}
         />
       )}
     </div>
