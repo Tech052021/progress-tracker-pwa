@@ -76,7 +76,7 @@ button, input, textarea, select { font: inherit; }
 }
 
 .hero, .card {
-  background: var(--tint-100);
+  background: linear-gradient(135deg, var(--tint-200) 0%, var(--tint-100) 100%);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: 18px;
