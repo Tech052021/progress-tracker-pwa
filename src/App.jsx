@@ -394,6 +394,7 @@ function App() {
   const [goalUpdateDrafts, setGoalUpdateDrafts] = useState({});
   const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false });
   const [skippedGoalIds, setSkippedGoalIds] = useState([]);
+  const [showWelcome, setShowWelcome] = useState(true);
 
   useEffect(() => { setDashLogOpen(null); }, [tab]);
 
@@ -958,6 +959,36 @@ function App() {
         </div>
       </header>
 
+      {/* ── WELCOME SPLASH POPUP ───────────────────────── */}
+      {showWelcome && (
+        <div className="welcome-overlay" onClick={() => setShowWelcome(false)}>
+          <div className="welcome-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="welcome-streak-ring">
+              <span className="welcome-streak-num">{activityStreakDays}</span>
+              <span className="welcome-streak-label">day streak</span>
+            </div>
+            <h2 className="welcome-greeting">{greeting}</h2>
+            <p className="welcome-message">{momentumMessage}</p>
+            <div className="welcome-stats">
+              <div className="welcome-stat">
+                <strong>{todayActivityCount}/{dailyTarget}</strong>
+                <span>done today</span>
+              </div>
+              <div className="welcome-stat">
+                <strong>{weeklyActivityCount}</strong>
+                <span>this week</span>
+              </div>
+              <div className="welcome-stat">
+                <strong>{completedPeriodGoals}/{periodTrackableGoals.length}</strong>
+                <span>goals on pace</span>
+              </div>
+            </div>
+            <p className="welcome-motd">"{messageOfTheDay}"</p>
+            <button className="primary welcome-dismiss" onClick={() => setShowWelcome(false)}>Let's go →</button>
+          </div>
+        </div>
+      )}
+
       {tab === 'dashboard' && (
         <section className="card-grid dashboard-redesign">
 
@@ -980,41 +1011,6 @@ function App() {
               </div>
             </section>
           )}
-
-          {/* ── GREETING HERO CARD ───────────────────────────── */}
-          <section className="card dash-hero-card">
-            <div className="dash-greeting-row">
-              <div>
-                <h2 className="dash-greeting">{greeting}</h2>
-                <p className="dash-greeting-sub">{momentumMessage}</p>
-              </div>
-              <span className={activityStreakDays > 0 ? 'streak-pill hot' : 'streak-pill'}>
-                🔥 {activityStreakDays} day streak
-              </span>
-            </div>
-            <div className="dash-today-row">
-              <div className="dash-today-progress">
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${todayProgressPct}%` }} />
-                </div>
-                <span className="dash-today-label">{todayActivityCount}/{dailyTarget} done today</span>
-              </div>
-              <button className="primary dash-log-btn" onClick={() => setTab('log')}>Log now</button>
-            </div>
-            {categoryRings.length > 0 && (
-              <div className="dash-category-rings">
-                {categoryRings.map((ring) => (
-                  <div key={ring.id} className="dash-ring-item" onClick={() => { setTab('goals'); setActiveGoalCategoryId(ring.id); }} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setTab('goals')}>
-                    <div className="dash-ring-label">{ring.name}</div>
-                    <div className="dash-ring-track">
-                      <div className="dash-ring-fill" style={{ width: `${ring.pct}%`, background: ring.color }} />
-                    </div>
-                    <div className="dash-ring-pct" style={{ color: ring.color }}>{ring.pct}%</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
 
           {/* ── COLLAPSIBLE: THIS WEEK ───────────────────────── */}
           <section className="card dash-collapse-card dash-collapse-week">
