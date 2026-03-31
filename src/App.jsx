@@ -691,11 +691,62 @@ function App() {
   ];
   const unlockedAchievements = achievements.filter((a) => a.unlocked).length;
   const dailyMessages = [
-    'Small daily wins beat occasional big efforts.',
-    'Your future self is built by what you do today.',
-    'Consistency compounds faster than motivation.',
-    'Focus on progress, not perfection.',
-    'Do the next right action and momentum will follow.'
+    // Stoics & Ancient Philosophers
+    { text: 'We suffer more in imagination than in reality.', author: 'Seneca' },
+    { text: 'The impediment to action advances action. What stands in the way becomes the way.', author: 'Marcus Aurelius' },
+    { text: 'No man is free who is not master of himself.', author: 'Epictetus' },
+    { text: 'It is not that we have a short time to live, but that we waste a great deal of it.', author: 'Seneca' },
+    { text: 'You have power over your mind — not outside events. Realize this, and you will find strength.', author: 'Marcus Aurelius' },
+    { text: 'First say to yourself what you would be; and then do what you have to do.', author: 'Epictetus' },
+    { text: 'The happiness of your life depends upon the quality of your thoughts.', author: 'Marcus Aurelius' },
+    { text: 'Luck is what happens when preparation meets opportunity.', author: 'Seneca' },
+    { text: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', author: 'Aristotle' },
+    { text: 'Knowing yourself is the beginning of all wisdom.', author: 'Aristotle' },
+    // Eastern Wisdom
+    { text: 'The journey of a thousand miles begins with a single step.', author: 'Lao Tzu' },
+    { text: 'It does not matter how slowly you go as long as you do not stop.', author: 'Confucius' },
+    { text: 'The mind is everything. What you think you become.', author: 'Buddha' },
+    { text: 'An unexamined life is not worth living.', author: 'Socrates' },
+    { text: 'Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.', author: 'Buddha' },
+    { text: 'When you realize nothing is lacking, the whole world belongs to you.', author: 'Lao Tzu' },
+    { text: 'Our greatest glory is not in never falling, but in rising every time we fall.', author: 'Confucius' },
+    // Modern Leaders & Thinkers
+    { text: 'In the middle of difficulty lies opportunity.', author: 'Albert Einstein' },
+    { text: 'The best time to plant a tree was 20 years ago. The second best time is now.', author: 'Chinese Proverb' },
+    { text: 'Success is not final, failure is not fatal: it is the courage to continue that counts.', author: 'Winston Churchill' },
+    { text: 'Be the change that you wish to see in the world.', author: 'Mahatma Gandhi' },
+    { text: 'The only way to do great work is to love what you do.', author: 'Steve Jobs' },
+    { text: 'Everything you can imagine is real.', author: 'Pablo Picasso' },
+    { text: 'What you get by achieving your goals is not as important as what you become by achieving your goals.', author: 'Zig Ziglar' },
+    { text: 'Strive not to be a success, but rather to be of value.', author: 'Albert Einstein' },
+    { text: 'Energy and persistence conquer all things.', author: 'Benjamin Franklin' },
+    { text: 'Action is the foundational key to all success.', author: 'Pablo Picasso' },
+    { text: 'Your time is limited. Don\'t waste it living someone else\'s life.', author: 'Steve Jobs' },
+    { text: 'Discipline is the bridge between goals and accomplishment.', author: 'Jim Rohn' },
+    { text: 'The secret of getting ahead is getting started.', author: 'Mark Twain' },
+    { text: 'Hard choices, easy life. Easy choices, hard life.', author: 'Jerzy Gregorek' },
+    // Growth & Resilience
+    { text: 'A person who never made a mistake never tried anything new.', author: 'Albert Einstein' },
+    { text: 'Fall seven times, stand up eight.', author: 'Japanese Proverb' },
+    { text: 'The only impossible journey is the one you never begin.', author: 'Tony Robbins' },
+    { text: 'Don\'t count the days. Make the days count.', author: 'Muhammad Ali' },
+    { text: 'You miss 100% of the shots you don\'t take.', author: 'Wayne Gretzky' },
+    { text: 'What lies behind us and what lies before us are tiny matters compared to what lies within us.', author: 'Ralph Waldo Emerson' },
+    { text: 'The man who moves a mountain begins by carrying away small stones.', author: 'Confucius' },
+    { text: 'Whether you think you can or you think you can\'t, you\'re right.', author: 'Henry Ford' },
+    { text: 'Belief creates the actual fact.', author: 'William James' },
+    { text: 'If you want to lift yourself up, lift up someone else.', author: 'Booker T. Washington' },
+    // Progress & Consistency
+    { text: 'Small daily improvements are the key to staggering long-term results.', author: 'Robin Sharma' },
+    { text: 'Success is the sum of small efforts, repeated day in and day out.', author: 'Robert Collier' },
+    { text: 'The only person you are destined to become is the person you decide to be.', author: 'Ralph Waldo Emerson' },
+    { text: 'Champions keep playing until they get it right.', author: 'Billie Jean King' },
+    { text: 'It always seems impossible until it\'s done.', author: 'Nelson Mandela' },
+    { text: 'Do what you can, with what you have, where you are.', author: 'Theodore Roosevelt' },
+    { text: 'The difference between ordinary and extraordinary is that little extra.', author: 'Jimmy Johnson' },
+    { text: 'Courage is not the absence of fear, but the triumph over it.', author: 'Nelson Mandela' },
+    { text: 'The future belongs to those who believe in the beauty of their dreams.', author: 'Eleanor Roosevelt' },
+    { text: 'Start where you are. Use what you have. Do what you can.', author: 'Arthur Ashe' },
   ];
   const messageOfTheDay = dailyMessages[Math.abs(today.split('-').join('').split('').reduce((sum, n) => sum + Number(n), 0)) % dailyMessages.length];
 
@@ -994,7 +1045,8 @@ function App() {
       {showQuote && !showWelcome && (
         <div className="quote-overlay" onClick={() => setShowQuote(false)}>
           <div className="quote-popup">
-            <p className="quote-text">“{messageOfTheDay}”</p>
+            <p className="quote-text">“{messageOfTheDay.text}”</p>
+            <span className="quote-author">— {messageOfTheDay.author}</span>
             <button className="primary quote-dismiss" onClick={() => setShowQuote(false)}>Let’s go →</button>
           </div>
         </div>
@@ -1023,7 +1075,7 @@ function App() {
                 <span>goals on pace</span>
               </div>
             </div>
-            <p className="welcome-motd">"{messageOfTheDay}"</p>
+            <p className="welcome-motd">"Small daily wins build unstoppable momentum."</p>
             <button className="primary welcome-dismiss" onClick={() => dismissWelcome()}>Let's go →</button>
           </div>
         </div>
