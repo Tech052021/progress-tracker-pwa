@@ -1027,6 +1027,7 @@ function App() {
     // Weekly check-in sentiment
     if (lastCheckIn && lastCheckIn.weekId === currentWeek) {
       if (lastCheckIn.rating >= 4) msgs.push({ icon: '😊', text: 'Great week so far. Keep that energy going.', priority: 3 });
+      else if (lastCheckIn.rating === 3) msgs.push({ icon: '🙂', text: 'Steady week. Small wins still count.', priority: 2 });
       else if (lastCheckIn.rating <= 2) msgs.push({ icon: '🤝', text: 'Tough week — but showing up is what matters most.', priority: 6 });
     }
 
