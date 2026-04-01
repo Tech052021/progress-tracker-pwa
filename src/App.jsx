@@ -5,6 +5,8 @@ const { useEffect, useMemo, useState, useRef } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 import { useTheme } from './useTheme';
+import { buildSuggestedPlannerTasks, createSeedPlannerEntry } from './services/plannerService';
+import { loadJSON, saveJSON, createBackupAndPrune, enqueueMutation } from './services/storageAdapter';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
 const DATA_VERSION = 2;
@@ -16,10 +18,10 @@ const MAX_EVENTS = 500;
 function trackEvent(name, props = {}) {
   const event = { name, ts: new Date().toISOString(), ...props };
   try {
-    const existing = JSON.parse(localStorage.getItem(EVENTS_KEY) || '[]');
+    const existing = loadJSON(EVENTS_KEY, []);
     existing.unshift(event);
     if (existing.length > MAX_EVENTS) existing.length = MAX_EVENTS;
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(existing));
+    saveJSON(EVENTS_KEY, existing);
   } catch { /* storage full — silently skip */ }
 }
 
@@ -61,7 +63,7 @@ function deriveCategories(incomingCategories, weightUnit) {
   }
   // Preserve existing stored categories if incoming is empty/missing
   try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const stored = loadJSON(STORAGE_KEY, {});
     if (Array.isArray(stored?.settings?.categories) && stored.settings.categories.length > 0) {
       return normalizeCategories(stored.settings.categories, weightUnit);
     }
@@ -207,7 +209,8 @@ const defaultData = {
     weeklyNotes: []
   },
   baseline: { entries: [] },
-  weeklyCheckIns: { entries: [] }
+  weeklyCheckIns: { entries: [] },
+  dailyPlanner: { byDate: {} }
 };
 
 function NextStrideLogo() {
@@ -348,6 +351,11 @@ function normalizeData(raw) {
     },
     weeklyCheckIns: {
       entries: Array.isArray(incoming.weeklyCheckIns?.entries) ? incoming.weeklyCheckIns.entries : []
+    },
+    dailyPlanner: {
+      byDate: incoming.dailyPlanner?.byDate && typeof incoming.dailyPlanner.byDate === 'object'
+        ? incoming.dailyPlanner.byDate
+        : {}
     }
   };
 }
@@ -355,26 +363,14 @@ function normalizeData(raw) {
 function useStoredData() {
   const [data, setData] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return defaultData;
-
-      const parsed = JSON.parse(saved);
+      const parsed = loadJSON(STORAGE_KEY, null);
+      if (!parsed) return defaultData;
       const normalized = normalizeData(parsed);
       const rawJson = JSON.stringify(parsed);
       const normalizedJson = JSON.stringify(normalized);
 
       if (rawJson !== normalizedJson) {
-        const backupKey = `${BACKUP_KEY_PREFIX}${Date.now()}`;
-        localStorage.setItem(backupKey, rawJson);
-
-        // Keep only the newest 5 automatic backups.
-        const backupKeys = Object.keys(localStorage)
-          .filter((key) => key.startsWith(BACKUP_KEY_PREFIX))
-          .sort();
-        while (backupKeys.length > 5) {
-          const keyToDelete = backupKeys.shift();
-          if (keyToDelete) localStorage.removeItem(keyToDelete);
-        }
+        createBackupAndPrune({ keyPrefix: BACKUP_KEY_PREFIX, rawJson, maxBackups: 5 });
       }
 
       return normalized;
@@ -385,7 +381,7 @@ function useStoredData() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      saveJSON(STORAGE_KEY, data);
     } catch (e) {
       console.warn('NextStride: Could not save data to localStorage.', e?.message);
     }
@@ -418,6 +414,14 @@ function App() {
   const [expandedSections, setExpandedSections] = useState({ today: true, week: false, goals: false, checkin: false });
   const [skippedGoalIds, setSkippedGoalIds] = useState([]);
   const [checkinDraft, setCheckinDraft] = useState({ rating: 0, wentWell: '', toImprove: '' });
+  const [checkinPopup, setCheckinPopup] = useState(null); // { goalId, goalName, dateIso, isUncheck }
+  const [checkinInputMode, setCheckinInputMode] = useState('text');
+  const [checkinNote, setCheckinNote] = useState('');
+  const [checkinRecording, setCheckinRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const [checkinAudioUrl, setCheckinAudioUrl] = useState(null);
+  const [newPlannerTaskText, setNewPlannerTaskText] = useState('');
   const [showWelcome, setShowWelcome] = useState(() => {
     const stored = localStorage.getItem('nextstride_welcome');
     if (!stored) return true;
@@ -455,6 +459,7 @@ function App() {
         [bucket]: [{ id: entryId, ...entry, timestamp }, ...prev.entries[bucket]]
       }
     }));
+    enqueueMutation('entry_added', { bucket, entryId, entry: { ...entry, timestamp } });
     trackEvent('log_added', { bucket, goalId: entry.goalId || null, date: entry.date });
     // Show welcome popup again after new work is logged
     const stored = localStorage.getItem('nextstride_welcome');
@@ -473,6 +478,7 @@ function App() {
         [bucket]: prev.entries[bucket].filter((item) => item.id !== id)
       }
     }));
+    enqueueMutation('entry_removed', { bucket, id });
   };
 
   const currentWeek = getWeekId(ISO_DATE());
@@ -712,6 +718,89 @@ function App() {
     return candidates.sort((a, b) => (b.current / Math.max(1, b.target)) - (a.current / Math.max(1, a.target)))[0];
   }, [normalizedCategories, data.entries, currentWeek, currentMonth, skippedGoalIds]);
 
+  const plannerDate = today;
+  const plannerEntry = data.dailyPlanner?.byDate?.[plannerDate] || null;
+
+  const plannerSuggestedTasks = useMemo(() => {
+    return buildSuggestedPlannerTasks({
+      normalizedCategories,
+      goalCount,
+      isTargetGoalPeriod,
+      normalizeGoalPeriod,
+      actionItems,
+      plannerDate,
+      weekDateOptions,
+      currentYear,
+      uid
+    });
+  }, [normalizedCategories, data.entries, actionItems, currentWeek, currentMonth, plannerDate, weekDateOptions, currentYear]);
+
+  const seedPlannerForToday = useMemo(() => {
+    return createSeedPlannerEntry(plannerSuggestedTasks, data.reminders?.todayMustWin || '');
+  }, [plannerSuggestedTasks, data.reminders?.todayMustWin]);
+
+  useEffect(() => {
+    if (plannerEntry) return;
+    setData((prev) => ({
+      ...prev,
+      dailyPlanner: {
+        ...(prev.dailyPlanner || {}),
+        byDate: {
+          ...(prev.dailyPlanner?.byDate || {}),
+          [plannerDate]: seedPlannerForToday
+        }
+      }
+    }));
+  }, [plannerEntry, plannerDate, seedPlannerForToday, setData]);
+
+  const updatePlanner = (updater) => {
+    setData((prev) => {
+      const existing = prev.dailyPlanner?.byDate?.[plannerDate] || seedPlannerForToday;
+      const nextEntry = typeof updater === 'function' ? updater(existing) : { ...existing, ...updater };
+      enqueueMutation('planner_updated', { date: plannerDate, planner: nextEntry });
+      return {
+        ...prev,
+        dailyPlanner: {
+          ...(prev.dailyPlanner || {}),
+          byDate: {
+            ...(prev.dailyPlanner?.byDate || {}),
+            [plannerDate]: nextEntry
+          }
+        }
+      };
+    });
+  };
+
+  const planner = plannerEntry || seedPlannerForToday;
+
+  const togglePlannerTask = (taskId) => {
+    updatePlanner((prev) => ({
+      ...prev,
+      tasks: (prev.tasks || []).map((task) => task.id === taskId ? { ...task, done: !task.done } : task)
+    }));
+  };
+
+  const addPlannerTask = () => {
+    const text = newPlannerTaskText.trim();
+    if (!text) return;
+    updatePlanner((prev) => ({
+      ...prev,
+      tasks: [...(prev.tasks || []), { id: uid(), text, done: false, suggested: false, hint: '' }]
+    }));
+    setNewPlannerTaskText('');
+  };
+
+  const regeneratePlannerTasks = () => {
+    updatePlanner((prev) => {
+      const manualTasks = (prev.tasks || []).filter((task) => !task.suggested);
+      return {
+        ...prev,
+        tasks: [...plannerSuggestedTasks, ...manualTasks].slice(0, 10),
+        priorities: plannerSuggestedTasks.slice(0, 3).map((task, i) => task.text || prev.priorities?.[i] || '')
+      };
+    });
+  };
+
   const toggleSection = (key) => setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const hasCheckedInThisWeek = (data.weeklyCheckIns?.entries || []).some((e) => e.weekId === currentWeek);
@@ -739,6 +828,7 @@ function App() {
         entries: [entry, ...(prev.weeklyCheckIns?.entries || [])]
       }
     }));
+    enqueueMutation('weekly_checkin_saved', { entry });
     setCheckinDraft({ rating: 0, wentWell: '', toImprove: '' });
     setExpandedSections((prev) => ({ ...prev, checkin: false }));
   };
@@ -942,6 +1032,17 @@ function App() {
       return;
     }
 
+    // Open check-in popup for new entries
+    setCheckinPopup({ goalId: goal.id, goalName: goal.name, dateIso, goal });
+    setCheckinInputMode('text');
+    setCheckinNote('');
+    setCheckinAudioUrl(null);
+    setCheckinRecording(false);
+  };
+
+  const submitCheckinPopup = () => {
+    if (!checkinPopup) return;
+    const { goal, dateIso } = checkinPopup;
     addEntry('goalUpdates', {
       date: dateIso,
       goalId: goal.id,
@@ -950,8 +1051,70 @@ function App() {
       categoryName: goal.categoryName,
       amount: getChecklistAmountForGoal(goal),
       unit: goal.unit || 'count',
-      source: 'weekly-check'
+      source: 'weekly-check',
+      note: checkinNote.trim() || undefined,
+      audioUrl: checkinAudioUrl || undefined
     });
+    setCheckinPopup(null);
+    setCheckinNote('');
+    setCheckinAudioUrl(null);
+    setCheckinRecording(false);
+  };
+
+  const startAudioRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setCheckinAudioUrl(url);
+        // Transcribe via Web Speech API
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          const recognition = new SpeechRecognition();
+          recognition.continuous = false;
+          recognition.interimResults = false;
+          recognition.lang = 'en-US';
+          // Re-use the recorded audio by replaying and recognizing live
+          // (Web Speech API requires live mic — the transcript was captured during recording via a parallel recognition below)
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setCheckinRecording(true);
+
+      // Start live speech recognition in parallel with recording
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        recognition.onresult = (event) => {
+          const transcript = Array.from(event.results).map((r) => r[0].transcript).join(' ');
+          setCheckinNote((prev) => (prev ? prev + ' ' : '') + transcript);
+        };
+        recognition.onerror = () => {};
+        recognition.start();
+        mediaRecorderRef.current._recognition = recognition;
+      }
+    } catch {
+      alert('Microphone access is needed for audio check-ins.');
+    }
+  };
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current._recognition) {
+        try { mediaRecorderRef.current._recognition.stop(); } catch {}
+      }
+    }
+    setCheckinRecording(false);
   };
 
   const exportData = () => {
@@ -1172,6 +1335,9 @@ function App() {
           <p className="hero-copy hero-copy-compact">
             Build momentum across career, health, learning, and habit; even when going gets tough.
           </p>
+          <p className="hero-inline-quote">
+            “{messageOfTheDay.text}” <span>— {messageOfTheDay.author}</span>
+          </p>
         </div>
         <div className="hero-actions">
           <Clock />
@@ -1219,154 +1385,190 @@ function App() {
       )}
 
       {tab === 'dashboard' && (
-        <section className="card-grid dashboard-redesign">
+        <section className="daily-planner-wrap">
+          <section className="daily-planner-top card">
+            <div className="daily-planner-headline">
+              <h2>Daily Planner</h2>
+              <span>{new Date(`${plannerDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+            </div>
+            <div className="daily-planner-meta-row">
+              <div className="daily-mood-strip" role="group" aria-label="Mood">
+                <strong>Mood</strong>
+                {[1, 2, 3, 4, 5].map((mood) => (
+                  <button
+                    key={mood}
+                    type="button"
+                    className={`planner-icon-btn${planner.mood === mood ? ' active' : ''}`}
+                    onClick={() => updatePlanner({ mood })}
+                  >
+                    {['😓', '😕', '😌', '🙂', '😄'][mood - 1]}
+                  </button>
+                ))}
+              </div>
+              <div className="daily-weather-strip" role="group" aria-label="Weather">
+                {[
+                  ['sunny', '☀️'],
+                  ['partly', '🌤️'],
+                  ['cloudy', '☁️'],
+                  ['rainy', '🌧️']
+                ].map(([code, emoji]) => (
+                  <button
+                    key={code}
+                    type="button"
+                    className={`planner-icon-btn${planner.weather === code ? ' active' : ''}`}
+                    onClick={() => updatePlanner({ weather: code })}
+                    title={code}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
 
-          {/* ── NEXT BEST ACTION CARD ────────────────────────── */}
-          {nextBestAction && (
-            <section className="card dash-nba-card">
-              <div className="dash-nba-eyebrow">👉 Next best action</div>
-              <div className="dash-nba-content">
-                <div className="dash-nba-text">
-                  <h3 className="dash-nba-title">{nextBestAction.name}</h3>
-                  <p className="dash-nba-why">
-                    {nextBestAction.remaining} {nextBestAction.unit && nextBestAction.unit !== 'count' ? nextBestAction.unit : 'left'} remaining · {nextBestAction.category}
-                    {activityStreakDays > 0 ? ' · Keeps your streak alive' : ''}
-                  </p>
+          <section className="daily-planner-grid">
+            <article className="card planner-card planner-todo">
+              <h3>To Do List</h3>
+              <div className="planner-list">
+                {(planner.tasks || []).map((task) => (
+                  <label key={task.id} className={task.done ? 'planner-task done' : 'planner-task'}>
+                    <input type="checkbox" checked={!!task.done} onChange={() => togglePlannerTask(task.id)} />
+                    <span className="planner-task-text">{task.text}</span>
+                    <span className="planner-task-hint">{task.hint || ''}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="planner-add-row">
+                <input
+                  type="text"
+                  value={newPlannerTaskText}
+                  onChange={(e) => setNewPlannerTaskText(e.target.value)}
+                  placeholder="Add task"
+                />
+                <button type="button" className="secondary" onClick={addPlannerTask}>Add</button>
+              </div>
+              <button type="button" className="link-btn planner-refresh-btn" onClick={regeneratePlannerTasks}>Regenerate from goals</button>
+            </article>
+
+            <article className="card planner-card planner-priority">
+              <h3>Priorities</h3>
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="planner-line-input-row">
+                  <span>{index + 1}.</span>
+                  <input
+                    type="text"
+                    value={planner.priorities?.[index] || ''}
+                    onChange={(e) => updatePlanner((prev) => {
+                      const next = [...(prev.priorities || ['', '', ''])];
+                      next[index] = e.target.value;
+                      return { ...prev, priorities: next };
+                    })}
+                    placeholder="Top priority"
+                  />
                 </div>
-                <div className="dash-nba-actions">
-                  <button className="primary" onClick={() => setTab('log')}>Start now</button>
-                  <button className="secondary" onClick={() => setSkippedGoalIds((prev) => [...prev, nextBestAction.id])}>Skip</button>
-                </div>
+              ))}
+              <div className="planner-reminder-block">
+                <h4>Reminder To</h4>
+                <textarea
+                  rows={2}
+                  value={planner.reminder || ''}
+                  onChange={(e) => updatePlanner({ reminder: e.target.value })}
+                  placeholder="One important reminder for today"
+                />
               </div>
-            </section>
-          )}
+            </article>
 
-          {/* ── ENCOURAGEMENT CARD ───────────────────────────── */}
-          <section className="card dash-encouragement-card">
-            <span className="dash-encouragement-icon">{encouragement.icon}</span>
-            <p className="dash-encouragement-text">{encouragement.text}</p>
-          </section>
+            <article className="card planner-card planner-meals">
+              <h3>Meal Tracker</h3>
+              {['breakfast', 'lunch', 'dinner', 'snacks'].map((meal) => (
+                <label key={meal} className="planner-check-row">
+                  <span>{meal.charAt(0).toUpperCase() + meal.slice(1)}</span>
+                  <input
+                    type="checkbox"
+                    checked={!!planner.meals?.[meal]}
+                    onChange={(e) => updatePlanner((prev) => ({
+                      ...prev,
+                      meals: { ...(prev.meals || {}), [meal]: e.target.checked }
+                    }))}
+                  />
+                </label>
+              ))}
+            </article>
 
-          {/* ── COLLAPSIBLE: THIS WEEK ───────────────────────── */}
-          <section className="card dash-collapse-card dash-collapse-week">
-            <button className="dash-collapse-header" onClick={() => toggleSection('week')} aria-expanded={expandedSections.week}>
-              <span>📊 This Week <span className="dash-collapse-badge">{weeklyActivityCount} logs</span></span>
-              <span className="dash-collapse-chevron">{expandedSections.week ? '▾' : '▸'}</span>
-            </button>
-            {expandedSections.week && (
-              <div className="dash-collapse-body">
-                <div className="snapshot-row"><span>Activity logs this week</span><strong>{weeklyActivityCount}</strong></div>
-                <div className="snapshot-row"><span>Current streak</span><strong>{activityStreakDays} day{activityStreakDays !== 1 ? 's' : ''}</strong></div>
-                <div className="snapshot-row"><span>Action items complete</span><strong>{completedActionItems}/{actionItems.length}</strong></div>
-                <div className="snapshot-row"><span>Goals on pace this period</span><strong>{completedPeriodGoals}/{periodTrackableGoals.length}</strong></div>
-              </div>
-            )}
-          </section>
-
-          {/* ── COLLAPSIBLE: TODAY ───────────────────────────── */}
-          <section className="card dash-collapse-card dash-collapse-today">
-            <button className="dash-collapse-header" onClick={() => toggleSection('today')} aria-expanded={expandedSections.today}>
-              <span>📅 Today <span className="dash-collapse-badge">{todayActivityCount}/{dailyTarget} done</span></span>
-              <span className="dash-collapse-chevron">{expandedSections.today ? '▾' : '▸'}</span>
-            </button>
-            {expandedSections.today && (
-              <div className="dash-collapse-body">
-                {focusGoals.length ? focusGoals.map((goal) => (
-                  <div key={goal.id} className="dash-today-item">
-                    <span className={goal.remaining <= 0 ? 'dash-today-check done' : 'dash-today-check'}>{goal.remaining <= 0 ? '✓' : '○'}</span>
-                    <span className="dash-today-item-name">{goal.name}</span>
-                    <span className="dash-today-item-meta">{goal.current}/{goal.target}{goal.unit && goal.unit !== 'count' ? ` ${goal.unit}` : ''}</span>
-                  </div>
-                )) : (
-                  <div className="empty-state" style={{ minHeight: 60 }}>No goals configured yet. Add goals in Settings.</div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* ── COLLAPSIBLE: GOALS ───────────────────────────── */}
-          <section className="card dash-collapse-card dash-collapse-goals">
-            <button className="dash-collapse-header" onClick={() => toggleSection('goals')} aria-expanded={expandedSections.goals}>
-              <span>🎯 Goals <span className="dash-collapse-badge">{completedPeriodGoals}/{periodTrackableGoals.length} on pace</span></span>
-              <span className="dash-collapse-chevron">{expandedSections.goals ? '▾' : '▸'}</span>
-            </button>
-            {expandedSections.goals && (
-              <div className="dash-collapse-body">
-                {categoryRings.length ? categoryRings.map((ring) => (
-                  <div key={ring.id} className="snapshot-row dash-goals-row" onClick={() => { setTab('goals'); setActiveGoalCategoryId(ring.id); }} style={{ cursor: 'pointer' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span className="dash-ring-dot" style={{ background: ring.color }} />
-                      {ring.name}
-                    </span>
-                    <strong>{ring.completed}/{ring.total || 0} goals</strong>
-                  </div>
-                )) : (
-                  <div className="empty-state" style={{ minHeight: 60 }}>No goals yet. <button className="link-btn" onClick={() => { setTab('goals'); }}>Add goals</button></div>
-                )}
-                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
-                  <button className="secondary" onClick={() => setTab('progress')}>View progress</button>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* ── COLLAPSIBLE: WEEKLY CHECK-IN ─────────────────── */}
-          <section className="card dash-collapse-card dash-collapse-checkin">
-            <button className="dash-collapse-header" onClick={() => toggleSection('checkin')} aria-expanded={expandedSections.checkin}>
-              <span>💬 Weekly Check-in {hasCheckedInThisWeek ? <span className="dash-collapse-badge">✓ Done</span> : <span className="dash-collapse-badge">Due</span>}</span>
-              <span className="dash-collapse-chevron">{expandedSections.checkin ? '▾' : '▸'}</span>
-            </button>
-            {expandedSections.checkin && (
-              <div className="dash-collapse-body">
-                {hasCheckedInThisWeek ? (
-                  <div className="checkin-done">
-                    <p>You checked in this week — rated it {['', '😞', '😐', '🙂', '😊', '🔥'][lastCheckIn?.rating || 0]}</p>
-                    {lastCheckIn?.wentWell && <p className="checkin-recap"><strong>Went well:</strong> {lastCheckIn.wentWell}</p>}
-                    {lastCheckIn?.toImprove && <p className="checkin-recap"><strong>To improve:</strong> {lastCheckIn.toImprove}</p>}
-                  </div>
-                ) : (
-                  <div className="checkin-form">
-                    <p className="checkin-prompt">How was your week?</p>
-                    <div className="checkin-rating-row">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <button
-                          key={n}
-                          className={checkinDraft.rating === n ? 'checkin-rating active' : 'checkin-rating'}
-                          onClick={() => setCheckinDraft((d) => ({ ...d, rating: n }))}
-                        >
-                          {['', '😞', '😐', '🙂', '😊', '🔥'][n]}
-                        </button>
-                      ))}
-                    </div>
-                    <textarea
-                      className="checkin-input"
-                      placeholder="What went well this week?"
-                      value={checkinDraft.wentWell}
-                      onChange={(e) => setCheckinDraft((d) => ({ ...d, wentWell: e.target.value }))}
-                      rows={2}
-                    />
-                    <textarea
-                      className="checkin-input"
-                      placeholder="What would you improve next week?"
-                      value={checkinDraft.toImprove}
-                      onChange={(e) => setCheckinDraft((d) => ({ ...d, toImprove: e.target.value }))}
-                      rows={2}
-                    />
+            <article className="card planner-card planner-water">
+              <h3>Water</h3>
+              <div className="planner-cup-row">
+                {Array.from({ length: 8 }).map((_, i) => {
+                  const cup = i + 1;
+                  const filled = cup <= (planner.waterCups || 0);
+                  return (
                     <button
-                      className="primary"
-                      disabled={!checkinDraft.rating}
-                      onClick={saveWeeklyCheckIn}
-                      style={{ marginTop: 8, width: '100%' }}
+                      key={cup}
+                      type="button"
+                      className={filled ? 'planner-cup active' : 'planner-cup'}
+                      onClick={() => updatePlanner({ waterCups: cup })}
                     >
-                      Save check-in
+                      🥤
                     </button>
-                  </div>
-                )}
+                  );
+                })}
               </div>
-            )}
-          </section>
+            </article>
 
+            <article className="card planner-card planner-exercise">
+              <h3>Exercise</h3>
+              <div className="planner-two-metrics">
+                <label>
+                  <span>Minutes</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={planner.exerciseMinutes || 0}
+                    onChange={(e) => updatePlanner({ exerciseMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </label>
+                <label>
+                  <span>Steps</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={planner.exerciseSteps || 0}
+                    onChange={(e) => updatePlanner({ exerciseSteps: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </label>
+              </div>
+            </article>
+
+            <article className="card planner-card planner-gratitude">
+              <h3>Today I Am Grateful For</h3>
+              <textarea
+                rows={3}
+                value={planner.gratitude || ''}
+                onChange={(e) => updatePlanner({ gratitude: e.target.value })}
+                placeholder="Capture one thing that gave you energy today"
+              />
+            </article>
+
+            <article className="card planner-card planner-notes">
+              <h3>Notes</h3>
+              <textarea
+                rows={3}
+                value={planner.notes || ''}
+                onChange={(e) => updatePlanner({ notes: e.target.value })}
+                placeholder="Notes"
+              />
+            </article>
+
+            <article className="card planner-card planner-tomorrow">
+              <h3>For Tomorrow</h3>
+              <textarea
+                rows={3}
+                value={planner.tomorrow || ''}
+                onChange={(e) => updatePlanner({ tomorrow: e.target.value })}
+                placeholder="Write one clear next step for tomorrow"
+              />
+            </article>
+          </section>
         </section>
       )}
 
@@ -1452,20 +1654,25 @@ function App() {
                           ) : (
                             <>
                               {usesChecklist ? (
-                                <div className="weekly-checklist">
-                                  <div className="goal-progress-capture-meta">Weekly check-in</div>
-                                  <div className="weekly-checklist-row" role="group" aria-label={`Weekly completion for ${goal.name}`}>
+                                <div className="weekly-calendar">
+                                  <div className="weekly-calendar-label">Weekly check-in</div>
+                                  <div className="weekly-calendar-grid">
                                     {weekDateOptions.map((dayOption) => {
                                       const checked = isWeeklyGoalChecked(goal, dayOption.iso);
+                                      const isToday = dayOption.iso === today;
+                                      const note = checked ? (data.entries.goalUpdates || []).find((e) => e.date === dayOption.iso && e.source === 'weekly-check' && e.goalId === goal.id)?.note : null;
                                       return (
                                         <button
                                           key={`${goal.id}-${dayOption.iso}`}
                                           type="button"
-                                          className={checked ? 'weekly-day-btn checked' : 'weekly-day-btn'}
+                                          className={`weekly-cal-day${checked ? ' checked' : ''}${isToday ? ' today' : ''}`}
                                           onClick={() => toggleWeeklyGoalCheck(goal, dayOption.iso)}
                                           aria-pressed={checked}
+                                          title={note || ''}
                                         >
-                                          <span>{dayOption.compactLabel}</span>
+                                          <span className="weekly-cal-dayname">{dayOption.label}</span>
+                                          <span className="weekly-cal-date">{dayOption.day}</span>
+                                          {checked && <span className="weekly-cal-check">✓</span>}
                                         </button>
                                       );
                                     })}
@@ -1775,6 +1982,81 @@ function App() {
             )}
           </section>
         </section>
+      )}
+
+      {/* ── CHECK-IN NOTE POPUP ─────────────────────────── */}
+      {checkinPopup && (
+        <div className="checkin-note-overlay">
+          <div className="checkin-note-popup">
+            <div className="checkin-note-header">
+              <h3>What did you do?</h3>
+              <span className="checkin-note-meta">{checkinPopup.goalName} · {checkinPopup.dateIso}</span>
+            </div>
+            <div className="checkin-note-mode-toggle">
+              <button
+                type="button"
+                className={`checkin-mode-btn${checkinInputMode === 'text' ? ' active' : ''}`}
+                onClick={() => { setCheckinInputMode('text'); if (checkinRecording) stopAudioRecording(); }}
+                title="Type your note"
+              >
+                ✏️
+              </button>
+              <button
+                type="button"
+                className={`checkin-mode-btn${checkinInputMode === 'audio' ? ' active' : ''}`}
+                onClick={() => setCheckinInputMode('audio')}
+                title="Record audio note"
+              >
+                🎤
+              </button>
+            </div>
+
+            {checkinInputMode === 'text' ? (
+              <textarea
+                className="checkin-note-input"
+                placeholder="Quick summary of what you did..."
+                value={checkinNote}
+                onChange={(e) => setCheckinNote(e.target.value)}
+                rows={3}
+                autoFocus
+              />
+            ) : (
+              <div className="checkin-audio-area">
+                {!checkinRecording && !checkinAudioUrl && (
+                  <button type="button" className="checkin-record-btn" onClick={startAudioRecording}>
+                    <span className="checkin-record-icon">🎙️</span>
+                    <span>Tap to record</span>
+                  </button>
+                )}
+                {checkinRecording && (
+                  <button type="button" className="checkin-record-btn recording" onClick={stopAudioRecording}>
+                    <span className="checkin-record-pulse" />
+                    <span>Recording... tap to stop</span>
+                  </button>
+                )}
+                {checkinAudioUrl && !checkinRecording && (
+                  <div className="checkin-audio-preview">
+                    <audio controls src={checkinAudioUrl} />
+                    <button type="button" className="link-btn" onClick={() => { setCheckinAudioUrl(null); setCheckinNote(''); }}>Re-record</button>
+                  </div>
+                )}
+                {checkinNote && checkinInputMode === 'audio' && (
+                  <div className="checkin-transcript">
+                    <span className="checkin-transcript-label">Transcript</span>
+                    <p>{checkinNote}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="checkin-note-actions">
+              <button type="button" className="secondary" onClick={() => setCheckinPopup(null)}>Cancel</button>
+              <button type="button" className="primary" onClick={submitCheckinPopup}>
+                {checkinNote.trim() || checkinAudioUrl ? 'Save & check in →' : 'Check in →'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showSettings && (
