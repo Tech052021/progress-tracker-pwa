@@ -2277,6 +2277,69 @@ input:focus, textarea:focus, select:focus {
   font-size: 13px !important;
 }
 
+/* -- Check-in history --------------------------------- */
+.checkin-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.checkin-history-card {
+  padding: 12px 14px;
+  border-radius: var(--radius, 12px);
+  border: 1px solid var(--tint-200);
+  background: var(--surface);
+}
+
+.checkin-history-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.checkin-history-week {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.checkin-history-date {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.checkin-history-rating {
+  font-size: 1.3rem;
+}
+
+.checkin-history-note {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.checkin-history-stats {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* -- Goal baseline row -------------------------------- */
+.goal-baseline-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0 0;
+  margin-top: 8px;
+  border-top: 1px dashed var(--tint-200);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 @media (max-width: 720px) {
   .dashboard-redesign {
     grid-template-columns: 1fr;

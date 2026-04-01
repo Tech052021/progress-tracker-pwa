@@ -1483,6 +1483,12 @@ function App() {
                               )}
                             </>
                           )}
+                          {goal.createdAt && (
+                            <div className="goal-baseline-row">
+                              <span>Since {goal.createdAt}</span>
+                              <span>{Math.max(0, Math.floor((new Date(today + 'T00:00:00') - new Date(goal.createdAt + 'T00:00:00')) / 86400000))} days active</span>
+                            </div>
+                          )}
                         </article>
                       );
                     })}
@@ -1591,9 +1597,43 @@ function App() {
               >
                 Category analysis
               </button>
+              <button
+                type="button"
+                className={progressView === 'checkins' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                onClick={() => setProgressView('checkins')}
+              >
+                Check-in history
+              </button>
             </div>
 
-            {progressView === 'goals' ? (
+            {progressView === 'checkins' ? (
+              <div style={{ marginTop: 14 }}>
+                {(data.weeklyCheckIns?.entries || []).length ? (
+                  <div className="checkin-history-list">
+                    {(data.weeklyCheckIns?.entries || []).map((entry) => (
+                      <div key={entry.id} className="checkin-history-card">
+                        <div className="checkin-history-header">
+                          <span className="checkin-history-week">Week {entry.weekId?.replace(/^\d{4}-W/, '')}</span>
+                          <span className="checkin-history-date">{entry.date}</span>
+                          <span className="checkin-history-rating">{['', '😞', '😐', '🙂', '😊', '🔥'][entry.rating || 0]}</span>
+                        </div>
+                        {entry.wentWell && <p className="checkin-history-note"><strong>Went well:</strong> {entry.wentWell}</p>}
+                        {entry.toImprove && <p className="checkin-history-note"><strong>To improve:</strong> {entry.toImprove}</p>}
+                        {entry.stats && (
+                          <div className="checkin-history-stats">
+                            <span>{entry.stats.weeklyLogs} logs</span>
+                            <span>{entry.stats.streak}-day streak</span>
+                            <span>{entry.stats.goalsOnPace}/{entry.stats.totalGoals} goals on pace</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">No check-ins yet. Complete your first weekly check-in from the Dashboard.</div>
+                )}
+              </div>
+            ) : progressView === 'goals' ? (
               <>
                 <div className="tabs category-tabs" role="tablist" aria-label="Goal progress categories">
                   {normalizedCategories.map((category) => (
