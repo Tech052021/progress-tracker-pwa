@@ -56,10 +56,17 @@ function createDefaultCategories() {
 }
 
 function deriveCategories(incomingCategories, weightUnit) {
-  if (Array.isArray(incomingCategories)) {
+  if (Array.isArray(incomingCategories) && incomingCategories.length > 0) {
     return normalizeCategories(incomingCategories, weightUnit);
   }
-  return [];
+  // Preserve existing stored categories if incoming is empty/missing
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    if (Array.isArray(stored?.settings?.categories) && stored.settings.categories.length > 0) {
+      return normalizeCategories(stored.settings.categories, weightUnit);
+    }
+  } catch { /* ignore */ }
+  return createDefaultCategories();
 }
 
 function uid() {
@@ -377,7 +384,11 @@ function useStoredData() {
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn('NextStride: Could not save data to localStorage.', e?.message);
+    }
   }, [data]);
 
   return [data, setData];
@@ -1289,7 +1300,7 @@ function App() {
                     <strong>{ring.completed}/{ring.total || 0} goals</strong>
                   </div>
                 )) : (
-                  <div className="empty-state" style={{ minHeight: 60 }}>No goals yet.</div>
+                  <div className="empty-state" style={{ minHeight: 60 }}>No goals yet. <button className="link-btn" onClick={() => { setTab('goals'); }}>Add goals</button></div>
                 )}
                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button className="secondary" onClick={() => setTab('goals')}>Manage goals</button>
@@ -1494,7 +1505,7 @@ function App() {
                     })}
                   </div>
                 ) : (
-                  <div className="empty-state" style={{ marginTop: 16 }}>No goals yet.</div>
+                  <div className="empty-state" style={{ marginTop: 16 }}>No goals yet. Open Settings to add goals.</div>
                 )}
               </>
             ) : (
@@ -1543,7 +1554,7 @@ function App() {
                     <RoadmapList goals={filteredRoadmapGoals} actions={filteredRoadmapActions} />
                   </div>
                 ) : (
-                  <div className="empty-state">No categories configured yet.</div>
+                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
                 )}
               </>
             ) : (
@@ -1571,7 +1582,7 @@ function App() {
                     />
                   </div>
                 ) : (
-                  <div className="empty-state">No categories configured yet.</div>
+                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
                 )}
               </>
             )}
@@ -1663,7 +1674,7 @@ function App() {
                     <div className="snapshot-row"><span>Average short-term progress</span><strong>{activeCategoryAverageGoalProgress}%</strong></div>
                   </div>
                 ) : (
-                  <div className="empty-state">No categories configured yet.</div>
+                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
                 )}
               </>
             ) : (
@@ -1694,7 +1705,7 @@ function App() {
                     )) : <div className="empty-state" style={{ marginTop: 10 }}>No goals in this category yet.</div>}
                   </div>
                 ) : (
-                  <div className="empty-state">No categories configured yet.</div>
+                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
                 )}
               </>
             )}

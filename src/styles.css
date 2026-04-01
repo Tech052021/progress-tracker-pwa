@@ -2329,6 +2329,21 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* -- Goal baseline row -------------------------------- */
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--brand-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+  padding: 0;
+  font-weight: 600;
+}
+
+.link-btn:hover {
+  opacity: 0.8;
+}
+
 .goal-baseline-row {
   display: flex;
   justify-content: space-between;
