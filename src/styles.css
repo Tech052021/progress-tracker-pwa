@@ -178,6 +178,18 @@ button, input, textarea, select { font: inherit; }
   border-radius: 14px;
 }
 
+.welcome-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.welcome-secondary {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  border-radius: 14px;
+}
+
 /* ── Motivational Quote Splash ─────────────────────── */
 .quote-overlay {
   position: fixed;
@@ -1636,6 +1648,94 @@ input:focus, textarea:focus, select:focus {
   color: #64748b;
   font-size: 12px;
 }
+
+.goal-session-toggle-row {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.goal-session-toggle {
+  cursor: pointer;
+}
+
+.goal-session-editor {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid #d9e5f1;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.goal-session-editor strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1f3b4d;
+}
+
+.goal-session-days,
+.goal-session-days-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.goal-session-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.goal-session-image-preview,
+.goal-session-image {
+  margin-top: 8px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #d9e5f1;
+  background: #ffffff;
+  max-width: 320px;
+}
+
+.goal-session-image-preview img,
+.goal-session-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.goal-session-plan {
+  margin-top: 10px;
+  border-top: 1px solid var(--tint-200);
+  padding-top: 10px;
+}
+
+.goal-session-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.goal-session-copy {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.goal-session-link {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--brand-dark);
+  font-weight: 700;
+  text-decoration: underline;
+}
 .entry-top {
   display: flex;
   justify-content: space-between;
@@ -1919,6 +2019,16 @@ input:focus, textarea:focus, select:focus {
 .settings-tabs .tab { white-space: nowrap; }
 .settings-tabs .tab.active { box-shadow: 0 8px 24px rgba(15,23,42,0.06); }
 
+.settings-tabs .new-goal-tab {
+  background: rgba(var(--brand-rgb), 0.12);
+  border-style: dashed;
+  color: var(--brand-dark);
+}
+
+.settings-tabs .new-goal-tab:hover {
+  background: rgba(var(--brand-rgb), 0.18);
+}
+
 .settings-hint {
   border-radius: 14px;
   border: 1px solid var(--tint-300);
@@ -2022,6 +2132,10 @@ input:focus, textarea:focus, select:focus {
   }
 
   .goal-row {
+    grid-template-columns: 1fr;
+  }
+
+  .goal-session-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2889,6 +3003,206 @@ body::-webkit-scrollbar-thumb:hover {
 }
 .dash-collapse-goals {
   border-left: 4px solid var(--brand-accent);
+}
+
+/* ── Weekly Plan View ──────────────────────────── */
+.weekly-plan-view {
+  display: grid;
+  gap: 16px;
+}
+
+.weekly-plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--tint-50);
+  border-radius: 14px;
+  border: 1px solid var(--tint-300);
+}
+
+.weekly-plan-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.weekly-plan-accountability {
+  border-radius: 14px;
+  border: 1px solid var(--tint-300);
+  background: var(--tint-50);
+  padding: 14px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.weekly-plan-accountability-stat {
+  display: inline-flex;
+  gap: 4px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.weekly-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.weekly-plan-day-card {
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  padding: 12px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.weekly-plan-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.weekly-plan-day-label {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.weekly-plan-day-date {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.weekly-plan-day-mark-today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.weekly-plan-tasks {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+}
+
+.weekly-plan-task {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.weekly-plan-task:hover {
+  background: #eef2ff;
+  border-color: #94a3b8;
+}
+
+.weekly-plan-task input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.weekly-plan-task.completed {
+  opacity: 0.6;
+}
+
+.weekly-plan-task.completed .weekly-plan-task-text {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.weekly-plan-task-text {
+  display: grid;
+  gap: 2px;
+  color: #334155;
+  flex: 1;
+  word-break: break-word;
+}
+
+.weekly-plan-task-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.weekly-plan-task-time {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.weekly-plan-task-alarm {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.weekly-plan-task-alarm:hover {
+  color: var(--brand);
+}
+
+.weekly-plan-task-alarm.active {
+  color: var(--brand);
+}
+
+.weekly-plan-carryover {
+  border-radius: 14px;
+  border: 1px dashed #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+  padding: 12px;
+  color: #d97706;
+  font-size: 13px;
+}
+
+.weekly-plan-carryover-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.weekly-plan-carryover-tasks {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 1024px) {
+  .weekly-plan-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .weekly-plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .weekly-plan-day-card {
+    min-height: auto;
+  }
 }
 
 .dash-collapse-checkin {

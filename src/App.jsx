@@ -4,8 +4,10 @@ try { window.React = React; } catch (e) { /* noop on non-browser */ }
 const { useEffect, useMemo, useState, useRef } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
+import WeeklyPlanView from './components/WeeklyPlanView';
 import { useTheme } from './useTheme';
 import { buildSuggestedPlannerTasks, createSeedPlannerEntry } from './services/plannerService';
+import { buildWeeklySchedule, buildAccountabilityMessage, getWeekIdFromDate, calculateDeadlineShift, updateTaskStatus } from './services/weeklyScheduleService';
 import { loadJSON, saveJSON, createBackupAndPrune, enqueueMutation } from './services/storageAdapter';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
@@ -14,6 +16,7 @@ const BACKUP_KEY_PREFIX = `${STORAGE_KEY}_backup_`;
 const ISO_DATE = () => new Date().toISOString().slice(0, 10);
 const EVENTS_KEY = 'nextstride_events';
 const MAX_EVENTS = 500;
+const SIGNUP_QUIZ_SESSION_KEY = 'nextstride_signup_quiz_pending';
 
 function trackEvent(name, props = {}) {
   const event = { name, ts: new Date().toISOString(), ...props };
@@ -43,10 +46,28 @@ function normalizeCategories(categories, weightUnit = 'lb') {
         ...goal,
         categoryId: goal.categoryId || category.id,
         categoryName: goal.categoryName || category.name,
-        unit: goal.unit || inferGoalUnit(goal.name, weightUnit)
+        unit: goal.unit || inferGoalUnit(goal.name, weightUnit),
+        sessionPlan: normalizeSessionPlan(goal.sessionPlan)
       }))
       : []
   }));
+}
+
+function normalizeSessionPlan(sessionPlan) {
+  const next = sessionPlan && typeof sessionPlan === 'object' ? sessionPlan : {};
+  return {
+    days: Array.isArray(next.days) ? next.days.filter(Boolean) : [],
+    focus: String(next.focus || ''),
+    instructions: String(next.instructions || ''),
+    resourceUrl: String(next.resourceUrl || ''),
+    imageUrl: String(next.imageUrl || ''),
+  };
+}
+
+function isSessionPlanningGoal(goal) {
+  const name = String(goal?.name || '').toLowerCase();
+  const unit = String(goal?.unit || '').toLowerCase();
+  return unit.includes('session') || /(cardio|strength|workout|pool|practice|training)/.test(name);
 }
 
 function createDefaultCategories() {
@@ -175,7 +196,8 @@ const defaultData = {
   },
   goalPlan: {
     shortTermGoals: [],
-    actionItems: []
+    actionItems: [],
+    coachNotes: []
   },
   settings: {
     workoutsPerWeek: 5,
@@ -210,7 +232,9 @@ const defaultData = {
   },
   baseline: { entries: [] },
   weeklyCheckIns: { entries: [] },
-  dailyPlanner: { byDate: {} }
+  dailyPlanner: { byDate: {} },
+  weeklySchedules: {},
+  goalDeadlineLog: []
 };
 
 function NextStrideLogo() {
@@ -302,6 +326,27 @@ function normalizeData(raw) {
       status: item.status === 'done' ? 'done' : 'todo'
     }))
     : [];
+  const coachNotes = Array.isArray(incoming.goalPlan?.coachNotes)
+    ? incoming.goalPlan.coachNotes.map((note) => ({
+      ...note,
+      id: note.id || uid(),
+      createdAt: note.createdAt || new Date().toISOString(),
+      categoryName: note.categoryName || '',
+      goalText: note.goalText || '',
+      strategy: {
+        longTerm: note.strategy?.longTerm || '',
+        shortTerm: Array.isArray(note.strategy?.shortTerm) ? note.strategy.shortTerm : []
+      },
+      execution: {
+        daily: Array.isArray(note.execution?.daily) ? note.execution.daily : [],
+        weekly: Array.isArray(note.execution?.weekly) ? note.execution.weekly : [],
+        yearly: Array.isArray(note.execution?.yearly) ? note.execution.yearly : []
+      },
+      nextBestAction: note.nextBestAction || '',
+      riskFlags: Array.isArray(note.riskFlags) ? note.riskFlags : [],
+      coachMessage: note.coachMessage || ''
+    }))
+    : [];
 
   const incomingSettings = incoming.settings || {};
   const incomingUnits = incomingSettings.units || {};
@@ -320,7 +365,8 @@ function normalizeData(raw) {
     },
     goalPlan: {
       shortTermGoals,
-      actionItems
+      actionItems,
+      coachNotes
     },
     settings: {
       ...defaultData.settings,
@@ -356,7 +402,11 @@ function normalizeData(raw) {
       byDate: incoming.dailyPlanner?.byDate && typeof incoming.dailyPlanner.byDate === 'object'
         ? incoming.dailyPlanner.byDate
         : {}
-    }
+    },
+    weeklySchedules: incoming.weeklySchedules && typeof incoming.weeklySchedules === 'object'
+      ? incoming.weeklySchedules
+      : {},
+    goalDeadlineLog: Array.isArray(incoming.goalDeadlineLog) ? incoming.goalDeadlineLog : []
   };
 }
 
@@ -395,6 +445,8 @@ function App() {
   const [tab, setTab] = useState('dashboard');
   const [dashLogOpen, setDashLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsLaunchIntent, setSettingsLaunchIntent] = useState(null);
+  const [goalQuizDeferredTab, setGoalQuizDeferredTab] = useState(null);
   const [showNavMenu, setShowNavMenu] = useState(false);
   const navMenuRef = useRef(null);
   useEffect(() => {
@@ -407,6 +459,7 @@ function App() {
   }, [showNavMenu]);
   const { activeTheme, setActiveTheme, themes: themeMap } = useTheme();
   const [activeGoalCategoryId, setActiveGoalCategoryId] = useState(null);
+  const [goalsView, setGoalsView] = useState('details'); // 'details' or 'schedule'
   const [roadmapView, setRoadmapView] = useState('roadmap');
   const [progressView, setProgressView] = useState('goals');
   const [logView, setLogView] = useState('capture');
@@ -432,6 +485,14 @@ function App() {
   });
 
   const [showQuote, setShowQuote] = useState(() => !showWelcome);
+
+  const triggerGoalQuiz = (source = 'no-goals') => {
+    setShowWelcome(false);
+    setShowQuote(false);
+    setShowSettings(true);
+    setSettingsLaunchIntent({ mode: 'append', source, focusOnly: true, token: Date.now() });
+    trackEvent('quick_start_opened', { source });
+  };
 
   const dismissWelcome = () => {
     setShowWelcome(false);
@@ -537,7 +598,44 @@ function App() {
 
   const shortTermGoals = data.goalPlan?.shortTermGoals || [];
   const actionItems = data.goalPlan?.actionItems || [];
+  const coachNotes = data.goalPlan?.coachNotes || [];
+  const totalConfiguredGoals = (Array.isArray(data.settings?.categories) ? data.settings.categories : []).reduce(
+    (sum, category) => sum + ((category.goals || []).length),
+    0
+  );
+  const hasNoGoals = totalConfiguredGoals === 0 && shortTermGoals.length === 0 && actionItems.length === 0;
+  const latestCoachNote = coachNotes.length
+    ? [...coachNotes].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
+    : null;
   const completedActionItems = actionItems.filter((item) => item.status === 'done').length;
+
+  useEffect(() => {
+    if (!hasNoGoals) {
+      setGoalQuizDeferredTab(null);
+      return;
+    }
+    if (showSettings) return;
+    if (goalQuizDeferredTab === tab) return;
+    triggerGoalQuiz('no-goals');
+  }, [hasNoGoals, goalQuizDeferredTab, showSettings, tab]);
+
+  useEffect(() => {
+    let shouldOpenSignupQuiz = false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('signupQuiz') === '1') {
+        shouldOpenSignupQuiz = true;
+      } else if (sessionStorage.getItem(SIGNUP_QUIZ_SESSION_KEY) === '1') {
+        shouldOpenSignupQuiz = true;
+        sessionStorage.removeItem(SIGNUP_QUIZ_SESSION_KEY);
+      }
+    } catch {
+      /* ignore signup trigger read issues */
+    }
+    if (shouldOpenSignupQuiz) {
+      triggerGoalQuiz('signup');
+    }
+  }, []);
 
   const averageGoalProgress = shortTermGoals.length
     ? Math.round(shortTermGoals.reduce((sum, goal) => {
@@ -752,6 +850,88 @@ function App() {
       }
     }));
   }, [plannerEntry, plannerDate, seedPlannerForToday, setData]);
+
+  // Generate weekly schedules when new coach notes are created
+  useEffect(() => {
+    const coachNotes = data.goalPlan?.coachNotes || [];
+    if (!coachNotes.length) return;
+
+    setData((prev) => {
+      let changed = false;
+      const nextWeeklySchedules = { ...(prev.weeklySchedules || {}) };
+      const nextDeadlineLog = [...(prev.goalDeadlineLog || [])];
+
+      // For each coach note, generate a weekly schedule if not already present
+      coachNotes.forEach((coachNote) => {
+        const weekId = getWeekIdFromDate(today);
+        const scheduleKey = `${weekId}_${coachNote.id}`;
+
+        if (!nextWeeklySchedules[scheduleKey] && coachNote.scheduleGuide?.weeklyTemplate?.length > 0) {
+          // Find the corresponding goal
+          const goalCategory = normalizedCategories.find((cat) =>
+            cat.name.toLowerCase() === String(coachNote.categoryName || '').toLowerCase()
+          );
+          const category = goalCategory || normalizedCategories[0];
+
+          if (category) {
+            const weeklyGoals = (category.goals || []).filter((g) => {
+              const period = normalizeGoalPeriod(g.period);
+              return period === 'week' && Number(g.target || 0) > 0;
+            });
+
+            if (weeklyGoals.length > 0) {
+              const schedule = buildWeeklySchedule({
+                weekId,
+                isoDateToday: today,
+                goals: weeklyGoals,
+                goalName: coachNote.goalText,
+                goalId: coachNote.id,
+                categoryId: category.id,
+                categoryName: category.name,
+                coachNote,
+                intake: {} // TODO: pass actual intake
+              });
+
+              nextWeeklySchedules[scheduleKey] = schedule;
+              changed = true;
+
+              // Initialize deadline tracking if not present
+              const victoryDate = coachNote.victoryDate || toISODateAfter(84);
+              const existingLog = nextDeadlineLog.find((log) => log.goalId === coachNote.id && log.weekId === weekId);
+              if (!existingLog) {
+                nextDeadlineLog.push({
+                  goalId: coachNote.id,
+                  goalText: coachNote.goalText,
+                  weekId,
+                  originalDeadline: victoryDate,
+                  currentDeadline: victoryDate,
+                  daysShifted: 0,
+                  reason: 'Plan initialized',
+                  timestamp: new Date().toISOString(),
+                  missedTasks: [],
+                  priorShifts: []
+                });
+              }
+            }
+          }
+        }
+      });
+
+      if (!changed) return prev;
+      return {
+        ...prev,
+        weeklySchedules: nextWeeklySchedules,
+        goalDeadlineLog: nextDeadlineLog
+      };
+    });
+  }, [data.goalPlan?.coachNotes, normalizedCategories, today]);
+
+  const toISODateAfter = (days) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+
 
   const updatePlanner = (updater) => {
     setData((prev) => {
@@ -1117,6 +1297,102 @@ function App() {
     setCheckinRecording(false);
   };
 
+  const handleTaskStatusChange = (scheduleKey, taskId, newStatus) => {
+    const schedules = data.weeklySchedules || {};
+    const schedule = schedules[scheduleKey];
+    if (!schedule) return;
+
+    const result = updateTaskStatus({
+      schedule,
+      taskId,
+      newStatus,
+      completedAt: newStatus === 'completed' ? ISO_DATE() : null
+    });
+
+    if (!result.statusChanged) return;
+
+    // Update the schedule with the new task status
+    const updatedSchedules = {
+      ...schedules,
+      [scheduleKey]: {
+        ...schedule,
+        completionStatus: result.schedule?.completionStatus || schedule.completionStatus
+      }
+    };
+
+    // If task was marked as missed, calculate deadline impact
+    if (newStatus === 'missed' && result.deadlineImpact) {
+      const goalId = schedule.goalId;
+      const deadlineLog = data.goalDeadlineLog || [];
+      const currentLogEntry = deadlineLog.find((log) => log.weekId === schedule.weekId && log.goalId === goalId);
+
+      if (currentLogEntry) {
+        const deadlineResult = calculateDeadlineShift({
+          originalDeadline: currentLogEntry.originalDeadline,
+          missedTasksThisWeek: result.missedCount,
+          weekId: schedule.weekId,
+          priorShifts: currentLogEntry.priorShifts
+        });
+
+        if (deadlineResult.shifted) {
+          const updatedDeadlineLog = deadlineLog.map((log) =>
+            log.weekId === schedule.weekId && log.goalId === goalId
+              ? {
+                  ...log,
+                  currentDeadline: deadlineResult.newDeadline,
+                  daysShifted: deadlineResult.shift,
+                  reason: deadlineResult.reason,
+                  timestamp: new Date().toISOString(),
+                  priorShifts: deadlineResult.priorShifts
+                }
+              : log
+          );
+
+          setData((prevData) => ({
+            ...prevData,
+            weeklySchedules: updatedSchedules,
+            goalDeadlineLog: updatedDeadlineLog
+          }));
+
+          return;
+        }
+      }
+    }
+
+    setData((prevData) => ({
+      ...prevData,
+      weeklySchedules: updatedSchedules
+    }));
+  };
+
+  const handleAlarmToggle = (scheduleKey, taskId, newAlarmState) => {
+    const schedules = data.weeklySchedules || {};
+    const schedule = schedules[scheduleKey];
+    if (!schedule) return;
+
+    const updatedSchedules = {
+      ...schedules,
+      [scheduleKey]: {
+        ...schedule,
+        scheduledTasks: (schedule.scheduledTasks || []).map((task) =>
+          task.id === taskId
+            ? { ...task, alarmEnabled: newAlarmState }
+            : task
+        ),
+        carryoverTasks: (schedule.carryoverTasks || []).map((task) =>
+          task.id === taskId
+            ? { ...task, alarmEnabled: newAlarmState }
+            : task
+        )
+      }
+    };
+
+    setData((prevData) => ({
+      ...prevData,
+      weeklySchedules: updatedSchedules
+    }));
+  };
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1209,7 +1485,7 @@ function App() {
     else if (totalActivityCount >= 50 && totalActivityCount < 55) msgs.push({ icon: '🎉', text: '50 entries milestone! Halfway to the century.', priority: 6 });
 
     // No goals set — onboarding nudge
-    if (periodTrackableGoals.length === 0) msgs.push({ icon: '🎯', text: 'Set your first goal in Settings to get tailored guidance.', priority: 3 });
+    if (periodTrackableGoals.length === 0) msgs.push({ icon: '🌱', text: 'Every start counts. Let\'s add one goal and build from there.', priority: 3 });
 
     // Default fallback
     if (!msgs.length) msgs.push({ icon: '💡', text: 'Every small step counts. Progress is progress.', priority: 1 });
@@ -1281,6 +1557,17 @@ function App() {
     ];
   }
 
+  const tabLabelMap = {
+    dashboard: 'Today',
+    goals: 'Plan',
+    roadmap: 'Coach',
+    progress: 'Review',
+    log: 'Journal'
+  };
+  const currentTabLabel = tabLabelMap[tab] || 'Today';
+
+  const openQuickStartPlanner = () => triggerGoalQuiz('welcome');
+
   return (
     <div className="app-shell">
       <header className="hero">
@@ -1293,7 +1580,7 @@ function App() {
           >
             {tab !== 'dashboard' && (
               <span className="nav-current-label">
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {currentTabLabel}
               </span>
             )}
             <span>···</span>
@@ -1301,11 +1588,11 @@ function App() {
           {showNavMenu && (
             <div className="nav-menu-dropdown" role="menu">
               {[
-                ['dashboard', '🏠', 'Dashboard'],
-                ['goals',     '🎯', 'Goals'],
-                ['roadmap',   '🗺️', 'Roadmap'],
-                ['progress',  '📈', 'Progress'],
-                ['log',       '✏️',  'Log'],
+                ['dashboard', '🏠', 'Today'],
+                ['goals',     '🎯', 'Plan'],
+                ['roadmap',   '🧠', 'Coach'],
+                ['progress',  '📈', 'Review'],
+                ['log',       '✍️', 'Journal'],
               ].map(([id, emoji, label]) => (
                 <button
                   key={id}
@@ -1379,7 +1666,14 @@ function App() {
               </div>
             </div>
             <p className="welcome-motd">"Small daily wins build unstoppable momentum."</p>
-            <button className="primary welcome-dismiss" onClick={() => dismissWelcome()}>Let's go →</button>
+            <div className="welcome-actions">
+              {hasNoGoals && (
+                <button className="primary welcome-dismiss" onClick={openQuickStartPlanner}>Set up my goals →</button>
+              )}
+              <button className={hasNoGoals ? 'secondary welcome-secondary' : 'primary welcome-dismiss'} onClick={() => dismissWelcome()}>
+                {hasNoGoals ? 'Skip for now' : 'Let\'s go →'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1426,6 +1720,20 @@ function App() {
             </div>
 
           </section>
+
+          {latestCoachNote && (
+            <section className="card ai-coach-card" aria-label="Coach guidance">
+              <h3>Coach</h3>
+              <p className="ai-coach-message">{latestCoachNote.coachMessage || 'You are building momentum one step at a time.'}</p>
+              <p className="ai-coach-next"><strong>Next best action:</strong> {latestCoachNote.nextBestAction}</p>
+              {!!latestCoachNote.execution?.daily?.length && (
+                <p className="ai-coach-meta"><strong>Today:</strong> {latestCoachNote.execution.daily.slice(0, 2).join(' | ')}</p>
+              )}
+              {!!latestCoachNote.execution?.weekly?.length && (
+                <p className="ai-coach-meta"><strong>This week:</strong> {latestCoachNote.execution.weekly.slice(0, 2).join(' | ')}</p>
+              )}
+            </section>
+          )}
 
           <section className="daily-planner-grid planner-board-grid">
             <article className="card planner-card planner-todo">
@@ -1608,118 +1916,165 @@ function App() {
                   </div>
                 </div>
 
-                {activeAreaGoals.length ? (
-                  <div className="goal-detail-list">
-                    {activeAreaGoals.map((goal) => {
-                      const goalPeriod = normalizeGoalPeriod(goal.period);
-                      const isMilestoneGoal = isTargetGoalPeriod(goalPeriod);
-                      const usesChecklist = goalPeriod === 'week' || goalPeriod === 'day';
-                      const currentValue = isMilestoneGoal ? 0 : goalCount(goal);
-                      const targetValue = Number(goal.target || 0);
-                      const isComplete = !isMilestoneGoal && targetValue > 0 && currentValue >= targetValue;
-                      const remaining = Math.max(0, targetValue - currentValue);
-                      const progressPct = targetValue > 0 ? Math.min(100, Math.round((currentValue / targetValue) * 100)) : 0;
-                      const unitSuffix = goal.unit && goal.unit !== 'count' ? ` ${goal.unit}` : '';
+                <div className="dash-sub-tabs at-top" role="tablist" aria-label="Goal views">
+                  <button
+                    type="button"
+                    className={goalsView === 'details' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                    onClick={() => setGoalsView('details')}
+                  >
+                    Goals
+                  </button>
+                  <button
+                    type="button"
+                    className={goalsView === 'schedule' ? 'dash-sub-tab active' : 'dash-sub-tab'}
+                    onClick={() => setGoalsView('schedule')}
+                  >
+                    Weekly Schedule
+                  </button>
+                </div>
 
-                      return (
-                        <article className="goal-detail-card" key={goal.id}>
-                          <div className={isMilestoneGoal ? 'goal-inline-progress-row milestone' : 'goal-inline-progress-row'}>
-                            <h4>{goal.name}</h4>
-                            {isMilestoneGoal ? (
-                              <div className="goal-inline-milestone-meta">{goal.victoryDate ? `Victory ${goal.victoryDate}` : 'Victory date not set'}</div>
-                            ) : (
-                              <div className="goal-inline-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={targetValue || 0} aria-valuenow={currentValue} aria-label={`${goal.name} progress`}>
-                                <div className="goal-inline-progress-fill" style={{ width: `${progressPct}%` }} />
-                              </div>
-                            )}
-                            <span className="goal-inline-progress-value">
-                              {isMilestoneGoal ? `Target ${targetValue || 'Not set'}${targetValue ? unitSuffix : ''}` : `${currentValue}/${targetValue}${unitSuffix}`}
-                            </span>
-                            <span className={isComplete ? 'goal-status-pill done' : 'goal-status-pill'}>
-                              {isMilestoneGoal ? 'Milestone' : isComplete ? 'On pace' : `${remaining} left`}
-                            </span>
-                          </div>
+                {goalsView === 'details' ? (
+                  activeAreaGoals.length ? (
+                    <div className="goal-detail-list">
+                      {activeAreaGoals.map((goal) => {
+                        const goalPeriod = normalizeGoalPeriod(goal.period);
+                        const isMilestoneGoal = isTargetGoalPeriod(goalPeriod);
+                        const usesChecklist = goalPeriod === 'week' || goalPeriod === 'day';
+                        const currentValue = isMilestoneGoal ? 0 : goalCount(goal);
+                        const targetValue = Number(goal.target || 0);
+                        const isComplete = !isMilestoneGoal && targetValue > 0 && currentValue >= targetValue;
+                        const remaining = Math.max(0, targetValue - currentValue);
+                        const progressPct = targetValue > 0 ? Math.min(100, Math.round((currentValue / targetValue) * 100)) : 0;
+                        const unitSuffix = goal.unit && goal.unit !== 'count' ? ` ${goal.unit}` : '';
+                        const sessionPlan = normalizeSessionPlan(goal.sessionPlan);
+                        const showSessionPlan = isSessionPlanningGoal(goal) && (sessionPlan.days.length || sessionPlan.focus || sessionPlan.instructions || sessionPlan.resourceUrl || sessionPlan.imageUrl);
 
-                          {isMilestoneGoal ? (
-                            <>
-                              <div className="goal-outcome-grid">
-                                <div className="goal-outcome-cell">
-                                  <span>Target</span>
-                                  <strong>{targetValue || 'Not set'} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}</strong>
-                                </div>
-                                <div className="goal-outcome-cell">
-                                  <span>Victory</span>
-                                  <strong>{goal.victoryDate || 'Not set'}</strong>
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              {usesChecklist ? (
-                                <div className="weekly-calendar">
-                                  <div className="weekly-calendar-label">Weekly check-in</div>
-                                  <div className="weekly-calendar-grid">
-                                    {weekDateOptions.map((dayOption) => {
-                                      const checked = isWeeklyGoalChecked(goal, dayOption.iso);
-                                      const isToday = dayOption.iso === today;
-                                      const note = checked ? (data.entries.goalUpdates || []).find((e) => e.date === dayOption.iso && e.source === 'weekly-check' && e.goalId === goal.id)?.note : null;
-                                      return (
-                                        <button
-                                          key={`${goal.id}-${dayOption.iso}`}
-                                          type="button"
-                                          className={`weekly-cal-day${checked ? ' checked' : ''}${isToday ? ' today' : ''}`}
-                                          onClick={() => toggleWeeklyGoalCheck(goal, dayOption.iso)}
-                                          aria-pressed={checked}
-                                          title={note || ''}
-                                        >
-                                          <span className="weekly-cal-dayname">{dayOption.label}</span>
-                                          <span className="weekly-cal-date">{dayOption.day}</span>
-                                          {checked && <span className="weekly-cal-check">✓</span>}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
+                        return (
+                          <article className="goal-detail-card" key={goal.id}>
+                            <div className={isMilestoneGoal ? 'goal-inline-progress-row milestone' : 'goal-inline-progress-row'}>
+                              <h4>{goal.name}</h4>
+                              {isMilestoneGoal ? (
+                                <div className="goal-inline-milestone-meta">{goal.victoryDate ? `Victory ${goal.victoryDate}` : 'Victory date not set'}</div>
                               ) : (
-                                <div className="goal-progress-capture">
-                                  <div className="goal-progress-capture-meta">Update what you completed for this goal</div>
-                                  <div className="goal-progress-capture-actions">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.1"
-                                      value={goalUpdateDrafts[goal.id] ?? '1'}
-                                      onChange={(e) => setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: e.target.value }))}
-                                      aria-label={`Progress amount for ${goal.name}`}
-                                    />
-                                    <button
-                                      type="button"
-                                      className="secondary"
-                                      onClick={() => recordGoalProgress(goal, goalUpdateDrafts[goal.id] ?? '1')}
-                                    >
-                                      Add progress
-                                    </button>
-                                  </div>
+                                <div className="goal-inline-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={targetValue || 0} aria-valuenow={currentValue} aria-label={`${goal.name} progress`}>
+                                  <div className="goal-inline-progress-fill" style={{ width: `${progressPct}%` }} />
                                 </div>
                               )}
-                            </>
-                          )}
-                          {goal.createdAt && (
-                            <div className="goal-baseline-row">
-                              <span>Since {goal.createdAt}</span>
-                              <span>{Math.max(0, Math.floor((new Date(today + 'T00:00:00') - new Date(goal.createdAt + 'T00:00:00')) / 86400000))} days active</span>
+                              <span className="goal-inline-progress-value">
+                                {isMilestoneGoal ? `Target ${targetValue || 'Not set'}${targetValue ? unitSuffix : ''}` : `${currentValue}/${targetValue}${unitSuffix}`}
+                              </span>
+                              <span className={isComplete ? 'goal-status-pill done' : 'goal-status-pill'}>
+                                {isMilestoneGoal ? 'Milestone' : isComplete ? 'On pace' : `${remaining} left`}
+                              </span>
                             </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
+
+                            {isMilestoneGoal ? (
+                              <>
+                                <div className="goal-outcome-grid">
+                                  <div className="goal-outcome-cell">
+                                    <span>Target</span>
+                                    <strong>{targetValue || 'Not set'} {goal.unit && goal.unit !== 'count' ? goal.unit : ''}</strong>
+                                  </div>
+                                  <div className="goal-outcome-cell">
+                                    <span>Victory</span>
+                                    <strong>{goal.victoryDate || 'Not set'}</strong>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {showSessionPlan && (
+                                  <div className="goal-session-plan">
+                                    <div className="weekly-calendar-label">Session plan</div>
+                                    {!!sessionPlan.days.length && (
+                                      <div className="goal-session-days-display">
+                                        {sessionPlan.days.map((day) => <span key={`${goal.id}-${day}`} className="goal-session-chip">{day}</span>)}
+                                      </div>
+                                    )}
+                                    {sessionPlan.focus && <p className="goal-session-copy"><strong>Focus:</strong> {sessionPlan.focus}</p>}
+                                    {sessionPlan.instructions && <p className="goal-session-copy"><strong>Plan:</strong> {sessionPlan.instructions}</p>}
+                                    {sessionPlan.resourceUrl && <a className="goal-session-link" href={sessionPlan.resourceUrl} target="_blank" rel="noreferrer">Open exercise guide</a>}
+                                    {sessionPlan.imageUrl && (
+                                      <div className="goal-session-image">
+                                        <img src={sessionPlan.imageUrl} alt={`${goal.name} reference`} />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {usesChecklist ? (
+                                  <div className="weekly-calendar">
+                                    <div className="weekly-calendar-label">Weekly check-in</div>
+                                    <div className="weekly-calendar-grid">
+                                      {weekDateOptions.map((dayOption) => {
+                                        const checked = isWeeklyGoalChecked(goal, dayOption.iso);
+                                        const isToday = dayOption.iso === today;
+                                        const note = checked ? (data.entries.goalUpdates || []).find((e) => e.date === dayOption.iso && e.source === 'weekly-check' && e.goalId === goal.id)?.note : null;
+                                        return (
+                                          <button
+                                            key={`${goal.id}-${dayOption.iso}`}
+                                            type="button"
+                                            className={`weekly-cal-day${checked ? ' checked' : ''}${isToday ? ' today' : ''}`}
+                                            onClick={() => toggleWeeklyGoalCheck(goal, dayOption.iso)}
+                                            aria-pressed={checked}
+                                            title={note || ''}
+                                          >
+                                            <span className="weekly-cal-dayname">{dayOption.label}</span>
+                                            <span className="weekly-cal-date">{dayOption.day}</span>
+                                            {checked && <span className="weekly-cal-check">✓</span>}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="goal-progress-capture">
+                                    <div className="goal-progress-capture-meta">Update what you completed for this goal</div>
+                                    <div className="goal-progress-capture-actions">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={goalUpdateDrafts[goal.id] ?? '1'}
+                                        onChange={(e) => setGoalUpdateDrafts((prev) => ({ ...prev, [goal.id]: e.target.value }))}
+                                        aria-label={`Progress amount for ${goal.name}`}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="secondary"
+                                        onClick={() => recordGoalProgress(goal, goalUpdateDrafts[goal.id] ?? '1')}
+                                      >
+                                        Add progress
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {goal.createdAt && (
+                              <div className="goal-baseline-row">
+                                <span>Since {goal.createdAt}</span>
+                                <span>{Math.max(0, Math.floor((new Date(today + 'T00:00:00') - new Date(goal.createdAt + 'T00:00:00')) / 86400000))} days active</span>
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-state" style={{ marginTop: 16 }}>Any start is a beginning. Add one goal and we can build the path with you.</div>
+                  )
                 ) : (
-                  <div className="empty-state" style={{ marginTop: 16 }}>No goals yet. Open Settings to add goals.</div>
+                  <WeeklyPlanView
+                    weeklySchedules={data.weeklySchedules}
+                    goalDeadlineLog={data.goalDeadlineLog}
+                    todayIso={today}
+                    onTaskStatusChange={handleTaskStatusChange}
+                    onAlarmToggle={handleAlarmToggle}
+                  />
                 )}
               </>
             ) : (
-              <div className="empty-state" style={{ marginTop: 16 }}>No focus areas yet.</div>
+              <div className="empty-state" style={{ marginTop: 16 }}>A single focus area is enough to get started. Add one and we’ll help shape the rest.</div>
             )}
           </section>
         </section>
@@ -1764,7 +2119,7 @@ function App() {
                     <RoadmapList goals={filteredRoadmapGoals} actions={filteredRoadmapActions} />
                   </div>
                 ) : (
-                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
+                  <div className="empty-state">A good plan can start small. Add one goal and we’ll help turn it into a path forward.</div>
                 )}
               </>
             ) : (
@@ -1792,7 +2147,7 @@ function App() {
                     />
                   </div>
                 ) : (
-                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
+                  <div className="empty-state">A good plan can start small. Add one goal and we’ll help turn it into a path forward.</div>
                 )}
               </>
             )}
@@ -1851,7 +2206,7 @@ function App() {
                     ))}
                   </div>
                 ) : (
-                  <div className="empty-state">No check-ins yet. Complete your first weekly check-in from the Dashboard.</div>
+                  <div className="empty-state">Your weekly reflection will show up here. Start with one check-in and we’ll build from there.</div>
                 )}
               </div>
             ) : progressView === 'goals' ? (
@@ -1879,12 +2234,12 @@ function App() {
                           unit={goal.unit}
                         />
                       </div>
-                    )) : <div className="empty-state" style={{ marginTop: 10 }}>No measurable period goals in this category yet.</div>}
+                    )) : <div className="empty-state" style={{ marginTop: 10 }}>A measurable goal here will make your progress easier to see week by week.</div>}
                     <div className="snapshot-row"><span>Action items complete</span><strong>{activeCategoryCompletedActions}/{filteredRoadmapActions.length}</strong></div>
                     <div className="snapshot-row"><span>Average short-term progress</span><strong>{activeCategoryAverageGoalProgress}%</strong></div>
                   </div>
                 ) : (
-                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
+                  <div className="empty-state">A good plan can start small. Add one goal and we’ll help turn it into a path forward.</div>
                 )}
               </>
             ) : (
@@ -1912,10 +2267,10 @@ function App() {
                           unit={goal.unit}
                         />
                       </div>
-                    )) : <div className="empty-state" style={{ marginTop: 10 }}>No goals in this category yet.</div>}
+                    )) : <div className="empty-state" style={{ marginTop: 10 }}>This category is ready for its first goal whenever you are.</div>}
                   </div>
                 ) : (
-                  <div className="empty-state">No categories yet. Open Settings to create your plan.</div>
+                  <div className="empty-state">A good plan can start small. Add one goal and we’ll help turn it into a path forward.</div>
                 )}
               </>
             )}
@@ -1962,7 +2317,7 @@ function App() {
                     has('bug')     && { key: 'bug',     label: 'Bug',     form: <BugForm     onSave={(e) => { addEntry('bugs', e);     close(); }} /> },
                     has('mentor')  && { key: 'mentor',  label: 'Mentor',  form: <MentorForm  onSave={(e) => { addEntry('mentor', e);   close(); }} /> },
                   ].filter(Boolean);
-                  if (available.length === 0) return <div className="empty-state">No goals configured yet. Open Goals to define what should be tracked.</div>;
+                  if (available.length === 0) return <div className="empty-state">Let\'s begin with one goal. Once it\'s in place, your tracking flow will be ready.</div>;
                   const openItem = available.find(a => a.key === dashLogOpen);
                   return (
                     <>
@@ -2066,6 +2421,9 @@ function App() {
           data={data}
           setData={setData}
           onClose={() => setShowSettings(false)}
+          onDeferPlanIntake={() => setGoalQuizDeferredTab(tab)}
+          launchPlanIntake={settingsLaunchIntent}
+          onLaunchPlanIntakeHandled={() => setSettingsLaunchIntent(null)}
           onExportData={exportData}
           onImportData={importData}
           activeTheme={activeTheme}
@@ -2131,7 +2489,7 @@ function Snapshot({ label, value }) {
 }
 
 function EntryList({ items, onDelete }) {
-  if (!items.length) return <div className="empty-state">No entries yet.</div>;
+  if (!items.length) return <div className="empty-state">Your progress history will begin with the first entry you add.</div>;
   return (
     <div className="entry-list">
       {items.slice(0, 40).map((item) => (
@@ -2150,7 +2508,7 @@ function EntryList({ items, onDelete }) {
 }
 
 function MiniLineChart({ data }) {
-  if (!data.length) return <div className="empty-state">Log a few weight entries to see the trend.</div>;
+  if (!data.length) return <div className="empty-state">Add a few weight check-ins and your trend will start to take shape.</div>;
   const width = 480;
   const height = 220;
   const pad = 24;
@@ -2195,7 +2553,7 @@ function RoadmapList({ goals, actions }) {
     .slice(0, 4);
 
   if (!upcomingGoals.length && !openActions.length) {
-    return <div className="empty-state">Add short-term goals and action items in Settings.</div>;
+    return <div className="empty-state">Add one short-term goal or action step, and your roadmap will start taking shape.</div>;
   }
 
   return (

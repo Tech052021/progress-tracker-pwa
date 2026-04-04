@@ -26,6 +26,7 @@ Tracking rule: A phase is done only when all exit criteria are validated.
 | Feature Area | Scope | Phase | Status | Notes |
 |---|---|---|---|---|
 | Goal intake and plan generation | Convert natural-language goal into editable draft plan | 1 | In progress | Session A+B+C+D complete: guided planner, realism checks, live preview, regenerate flow, richer goal generation, tested draft replacement helpers |
+| Weekly scheduling and discipline engine | Auto-generate Mon–Sun task schedule from goals; track completion; shift deadlines for missed tasks; alarm notifications | 1 | Done | `weeklyScheduleService.js` + 10 tests passing; `WeeklyPlanView.jsx` Mon–Sun grid with checkboxes + alarms; `alarmService.js` with Notification API; deadline shift + accountability messages; "Weekly Schedule" sub-tab wired in Goals view |
 | Plan editing and persistence | Category, goals, milestones, action items, safe save | 1 | In progress | Draft-generation logic extracted into pure helpers and covered by automated non-destructive tests |
 | Data safety and migrations | Preserve user data, backup before migration, no overwrite | 1 | In progress | Planner metadata stripping and replace-vs-append flows now covered by tests |
 | IA and interaction refinement | Remove clutter, simplify navigation, one-pane workflow | 1 | In progress | Added top-level tabs, moved roadmap/progress to single-pane sub-tabs, removed duplicate in-page navigation, improved touch workflows |
@@ -74,6 +75,7 @@ Use this format every work session.
 | 2026-03-31 (Session 23 / H) | Check-in history view + baseline comparison | Added "Check-in history" sub-tab in Progress tab showing all past weekly check-ins (rating, notes, snapshot stats). Added baseline row on non-milestone goal cards showing creation date and days active. | npm run build passed | None | Session I: Phase 1 exit validation |
 | 2026-03-31 (Session 24 / I) | Phase 1 exit validation | Fixed critical category overwrite bug in `deriveCategories()` — now preserves stored categories when import data is empty. Added try-catch on localStorage writes. Improved all empty-state messages to be actionable with inline CTAs. | npm run build passed | None | Session J: Phase 2 exit validation |
 | 2026-03-31 (Session 25 / J) | Phase 2 exit validation | Audited all 19 encouragement rules, 50+ quotes, all empty states, achievement hints, and check-in prompts for tone. Added neutral check-in rating (3) encouragement message. All Phase 2 criteria pass: context-aware messaging, auto-rendering weekly reflection, 100% positive non-judgmental tone. | npm run build passed | None | Phase 3: accounts and sync |
+| 2026-04-04 (Session 26 / K) | Weekly schedule system — algorithm-driven discipline and accountability | Built complete weekly scheduling engine: `weeklyScheduleService.js` (11 exported functions) distributes goals Mon–Sun with timed tasks, tracks status (planned/completed/missed/rescheduled), calculates deadline shifts (+1 day per missed task), generates carryover tasks, and produces accountability messages by performance tier. Extended data model with `weeklySchedules` and `goalDeadlineLog` fields (both migrated by normalizeData). Added `buildWeeklySchedule` useEffect that auto-generates schedules when coach notes are applied. Built `WeeklyPlanView.jsx` component (Mon–Sun day grid, task checkboxes, alarm toggles, deadline shift stats). Built `alarmService.js` (requestNotificationPermission, scheduleAlarm, scheduleAlarmsForDay, clearAllAlarms — Notification API with fallback). Added `handleTaskStatusChange` and `handleAlarmToggle` handlers in App.jsx. Wired new "Weekly Schedule" sub-tab in Goals view alongside existing Goals tab. | npm run build passed (38 modules, 0 errors); npm test passed (10/10 tests) | One date-calculation bug in getWeekIdFromDate fixed (JS Date has no getDayOfYear — replaced with ISO week anchor) | Session L: Phase 3 auth kickoff — sign up, sign in, sign out |
 
 ### Execution Drift Summary (2026-03-29)
 
@@ -166,9 +168,9 @@ Fallback: Keep motivation in-app first, defer external channel delivery.
 
 ## 11) Next 3 Sessions (Concrete)
 
-1. Session K (2h): Phase 3 kickoff — auth provider setup (sign up, sign in, sign out).
-2. Session L (2h): Cloud data sync — store/retrieve user data across devices.
-3. Session M (2h): Guest-to-account merge — preserve local data when signing up.
+1. Session L (2h): Phase 3 kickoff — auth provider setup (sign up, sign in, sign out).
+2. Session M (2h): Cloud data sync — store/retrieve user data across devices.
+3. Session N (2h): Guest-to-account merge — preserve local data when signing up.
 
 ## 12) Restart Checkpoint (2026-03-31, Session 19)
 
@@ -190,6 +192,29 @@ Use this as the exact restart point for the next work block.
 	- No new UI/UX/theme work until Session E-Resume baseline/check-in schema is complete.
 5. First task when resuming:
 	- Start with Session E-Resume from Section 11.
+
+## 15) Restore Checkpoint (2026-04-04, Session 26 / K)
+
+Use this as the exact restart point after the weekly scheduling sprint.
+
+1. Branch state at checkpoint: `main` pushed to origin.
+2. Files changed in this session:
+	- Created: `src/services/weeklyScheduleService.js` — schedule generation, status tracking, deadline shift, accountability messages, carryover (325 lines, 11 exports)
+	- Created: `src/services/weeklyScheduleService.test.js` — 10 tests, 100% passing
+	- Created: `src/services/alarmService.js` — requestNotificationPermission, scheduleAlarm, scheduleAlarmsForDay, clearAllAlarms
+	- Created: `src/components/WeeklyPlanView.jsx` — Mon–Sun 7-column grid, task checkboxes, alarm toggles, deadline stats card
+	- Modified: `src/App.jsx` — imported WeeklyPlanView + updateTaskStatus; added `goalsView` state; added `handleTaskStatusChange` + `handleAlarmToggle` handlers; added "Weekly Schedule" sub-tab in Goals view
+	- Modified: `src/styles.css` — added `.weekly-plan-*` CSS classes (day grid, task cards, alarm button, accountability card, responsive breakpoints)
+3. Functional state locked:
+	- Goals tab shows two sub-tabs: "Goals" and "Weekly Schedule".
+	- Weekly Schedule renders Mon–Sun day cards with tasks, times, checkboxes, and alarm toggles.
+	- Checking a task updates `completionStatus` in the stored schedule.
+	- Missed tasks trigger deadline shift (+1 day/missed task) logged in `goalDeadlineLog`.
+	- Alarm toggles persist per task; alarms scheduled via Notification API on component mount.
+	- Schedules auto-generate when coach notes are applied via useEffect.
+4. Build state: 38 modules, 0 errors. All 10 service tests passing.
+5. First task when resuming:
+	- Session L: Phase 3 auth provider setup (Supabase sign up, sign in, sign out).
 
 ## 13) How We Keep This Updated
 

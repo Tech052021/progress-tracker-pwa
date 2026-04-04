@@ -7,8 +7,10 @@ import {
   toISODateAfter,
 } from './settingsPlanner';
 import useLayeredModalSizing from './useLayeredModalSizing';
+import { buildGoalCoachNotes, buildFlowReadinessReview } from '../services/goalCoachAgent';
 
 const LB_PER_KG = 2.20462;
+const SESSION_DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function uid() {
   try { return crypto.randomUUID(); } catch { return String(Math.random()).slice(2); }
@@ -26,6 +28,23 @@ function inferGoalUnit(goalName, weightUnit = 'lb') {
 function normalizeGoalPeriod(period) {
   const normalized = String(period || '').trim().toLowerCase().replace(/^\//, '');
   return normalized || 'week';
+}
+
+function normalizeSessionPlan(sessionPlan) {
+  const next = sessionPlan && typeof sessionPlan === 'object' ? sessionPlan : {};
+  return {
+    days: Array.isArray(next.days) ? next.days.filter(Boolean) : [],
+    focus: String(next.focus || ''),
+    instructions: String(next.instructions || ''),
+    resourceUrl: String(next.resourceUrl || ''),
+    imageUrl: String(next.imageUrl || ''),
+  };
+}
+
+function isSessionPlanningGoal(goal) {
+  const name = String(goal?.name || '').toLowerCase();
+  const unit = String(goal?.unit || '').toLowerCase();
+  return unit.includes('session') || /(cardio|strength|workout|pool|practice|training)/.test(name);
 }
 
 function getSuggestedUnits(goal, weightUnit = 'lb') {
@@ -134,7 +153,8 @@ function migrateCategories(data) {
         ? category.goals.map((goal) => ({
           ...goal,
           unit: goal.unit || inferGoalUnit(goal.name, weightUnit),
-          period: normalizeGoalPeriod(goal.period)
+          period: normalizeGoalPeriod(goal.period),
+          sessionPlan: normalizeSessionPlan(goal.sessionPlan)
         }))
         : []
     }));
@@ -155,6 +175,7 @@ function migrateProfile(data) {
 function migrateGoalPlan(data) {
   const incomingGoals = Array.isArray(data.goalPlan?.shortTermGoals) ? data.goalPlan.shortTermGoals : [];
   const incomingActions = Array.isArray(data.goalPlan?.actionItems) ? data.goalPlan.actionItems : [];
+  const incomingCoachNotes = Array.isArray(data.goalPlan?.coachNotes) ? data.goalPlan.coachNotes : [];
 
   return {
     shortTermGoals: incomingGoals.map((goal) => ({
@@ -172,6 +193,25 @@ function migrateGoalPlan(data) {
       goalId: item.goalId || '',
       dueDate: item.dueDate || '',
       status: item.status === 'done' ? 'done' : 'todo'
+    })),
+    coachNotes: incomingCoachNotes.map((note) => ({
+      ...note,
+      id: note.id || uid(),
+      createdAt: note.createdAt || new Date().toISOString(),
+      categoryName: note.categoryName || '',
+      goalText: note.goalText || '',
+      strategy: {
+        longTerm: note.strategy?.longTerm || '',
+        shortTerm: Array.isArray(note.strategy?.shortTerm) ? note.strategy.shortTerm : []
+      },
+      execution: {
+        daily: Array.isArray(note.execution?.daily) ? note.execution.daily : [],
+        weekly: Array.isArray(note.execution?.weekly) ? note.execution.weekly : [],
+        yearly: Array.isArray(note.execution?.yearly) ? note.execution.yearly : []
+      },
+      nextBestAction: note.nextBestAction || '',
+      riskFlags: Array.isArray(note.riskFlags) ? note.riskFlags : [],
+      coachMessage: note.coachMessage || ''
     }))
   };
 }
@@ -218,6 +258,14 @@ function createDefaultPlanIntake() {
     targetDate: toISODateAfter(84),
     availableHoursPerWeek: 5,
     constraints: '',
+    motivationWhy: '',
+    currentReality: '',
+    successDefinition: '',
+    confidenceScore: 7,
+    checkInPreference: 'daily',
+    likelyDropOffReason: '',
+    enjoymentAnchor: '',
+    supportPeople: '',
     useSuggestedTimeline: true
   };
 }
@@ -234,7 +282,7 @@ function getWeeksUntilTargetDate(targetDate) {
 }
 
 
-export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData, activeTheme, setActiveTheme, themeMap, trackEvent }) {
+export default function SettingsEditor({ data, setData, onClose, onExportData, onImportData, activeTheme, setActiveTheme, themeMap, trackEvent, launchPlanIntake, onLaunchPlanIntakeHandled, onDeferPlanIntake }) {
   const [draft, setDraft] = useState(() => ({
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
@@ -243,7 +291,9 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
   }));
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
+  const [expandedSessionGoalId, setExpandedSessionGoalId] = useState(null);
   const [showPlanIntakeDialog, setShowPlanIntakeDialog] = useState(false);
+  const [intakeOnlyMode, setIntakeOnlyMode] = useState(false);
   const [planIntake, setPlanIntake] = useState(() => createDefaultPlanIntake());
   const [planIntakeMode, setPlanIntakeMode] = useState('append');
   const [lastGeneratedDraft, setLastGeneratedDraft] = useState(null);
@@ -314,6 +364,24 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     );
   }, [draft.units.weight, planFeedback.effectiveTimeframeWeeks, planIntake]);
 
+  const coachPreview = useMemo(() => {
+    if (!planPreview) return null;
+    return buildGoalCoachNotes({
+      intake: planIntake,
+      blueprint: planPreview,
+      planFeedback
+    });
+  }, [planPreview, planIntake, planFeedback]);
+
+  const flowReadinessPreview = useMemo(() => {
+    if (!coachPreview) return null;
+    return buildFlowReadinessReview({
+      intake: planIntake,
+      coachNote: coachPreview,
+      planFeedback
+    });
+  }, [coachPreview, planIntake, planFeedback]);
+
   // Active category shown in the editor (tabs)
   const [activeCatId, setActiveCatId] = useState(() => {
     const initial = migrateCategories(data);
@@ -350,9 +418,21 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     setShowPlanIntakeDialog(true);
   };
 
-  const closePlanIntake = () => {
+  const closePlanIntake = ({ defer = false } = {}) => {
     setShowPlanIntakeDialog(false);
+    if (defer && intakeOnlyMode) {
+      setIntakeOnlyMode(false);
+      if (typeof onDeferPlanIntake === 'function') onDeferPlanIntake();
+      if (typeof onClose === 'function') onClose();
+    }
   };
+
+  useEffect(() => {
+    if (!launchPlanIntake?.token) return;
+    setIntakeOnlyMode(Boolean(launchPlanIntake.focusOnly));
+    openPlanIntake(launchPlanIntake.mode || 'append');
+    if (typeof onLaunchPlanIntakeHandled === 'function') onLaunchPlanIntakeHandled();
+  }, [launchPlanIntake?.token]);
 
   const generatePlanFromIntake = (mode = 'append') => {
     if (!String(planIntake.goalText || '').trim()) {
@@ -361,18 +441,32 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     }
 
     const blueprint = buildPlanBlueprint({ ...planIntake, effectiveTimeframeWeeks: planFeedback.effectiveTimeframeWeeks }, draft.units.weight);
+    const coachNote = buildGoalCoachNotes({ intake: planIntake, blueprint, planFeedback });
     const draftId = mode === 'replace' && lastGeneratedDraft?.draftId ? lastGeneratedDraft.draftId : uid();
     let nextActiveId = null;
 
     setDraft((d) => {
       const result = applyGeneratedDraft({ draft: d, blueprint, draftId, mode, makeId: uid });
       nextActiveId = result.nextActiveId;
-      return result.nextDraft;
+      const existingCoachNotes = Array.isArray(result.nextDraft.goalPlan?.coachNotes) ? result.nextDraft.goalPlan.coachNotes : [];
+      const nextCoachNotes = [
+        ...existingCoachNotes.filter((note) => !(mode === 'replace' && note._draftId === draftId)),
+        { ...coachNote, _draftId: draftId, _draftSource: 'plan-intake' }
+      ];
+
+      return {
+        ...result.nextDraft,
+        goalPlan: {
+          ...result.nextDraft.goalPlan,
+          coachNotes: nextCoachNotes
+        }
+      };
     });
 
     if (nextActiveId) setActiveCatId(nextActiveId);
     setLastGeneratedDraft({ draftId, intake: { ...planIntake }, categoryName: blueprint.categoryName });
-    closePlanIntake();
+    if (intakeOnlyMode) setIntakeOnlyMode(false);
+    closePlanIntake({ defer: false });
     if (trackEvent) trackEvent('plan_created', { mode, categoryName: blueprint.categoryName });
     alert(mode === 'replace' ? 'Draft plan regenerated. Review and edit before clicking Apply.' : 'Draft plan generated. Review and edit before clicking Apply.');
   };
@@ -392,7 +486,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
 
   const addGoal = (catId) => {
     const newId = uid();
-    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '', createdAt: new Date().toISOString().slice(0, 10) }] } : c) }));
+    setDraft((d) => ({ ...d, categories: d.categories.map(c => c.id === catId ? { ...c, goals: [...c.goals, { id: newId, name: 'New Goal', target: 0, period: 'week', unit: 'count', victoryDate: '', createdAt: new Date().toISOString().slice(0, 10), sessionPlan: normalizeSessionPlan(null) }] } : c) }));
     setLastAddedGoalId(newId);
     if (trackEvent) trackEvent('goal_added', { goalId: newId, categoryId: catId });
   };
@@ -431,6 +525,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     const categoriesToPersist = stripDraftFields(draft.categories);
     const shortTermGoalsToPersist = stripDraftFields(draft.goalPlan.shortTermGoals);
     const actionItemsToPersist = stripDraftFields(draft.goalPlan.actionItems);
+    const coachNotesToPersist = stripDraftFields(draft.goalPlan.coachNotes || []);
     const validGoalIds = new Set(
       categoriesToPersist.flatMap((category) =>
         (category.goals || []).map((goal) => goal.id).filter(Boolean)
@@ -449,7 +544,8 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
       goalPlan: {
         ...prev.goalPlan,
         shortTermGoals: shortTermGoalsToPersist,
-        actionItems: actionItemsToPersist
+        actionItems: actionItemsToPersist,
+        coachNotes: coachNotesToPersist
       },
       settings: {
         ...prev.settings,
@@ -477,7 +573,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     }));
     const goalsCount = categoriesToPersist.reduce((sum, c) => sum + (c.goals || []).length, 0);
     if (trackEvent) trackEvent('settings_applied', { categoriesCount: categoriesToPersist.length, goalsCount });
-    alert('Goals updated');
+    alert('Your plan is updated and ready to build on.');
     if (typeof onClose === 'function') onClose();
   };
 
@@ -496,6 +592,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
 
   return (
     <div className="modal-backdrop">
+      {!intakeOnlyMode && (
       <div ref={settingsModalRef} className={`modal-content ${hasSubmodalOpen ? 'modal-content-submodal-open' : ''}`} onClick={(e) => e.stopPropagation()}>
         {themeMap && setActiveTheme && (
           <section className="card stack-gap theme-picker-card">
@@ -540,9 +637,10 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                     {draft.categories.map((cat) => (
                       <button key={cat.id} type="button" className={`tab ${cat.id === activeCatId ? 'active' : ''}`} onClick={() => setActiveCatId(cat.id)}>{cat.name}</button>
                     ))}
+                    <button type="button" className="tab new-goal-tab" onClick={() => openPlanIntake('append')}>+ New goal</button>
                   </div>
                   <div style={{ marginLeft: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button className="primary" onClick={() => openPlanIntake('append')}>Build category from goal</button>
+                    <button className="primary" onClick={() => openPlanIntake('append')}>Quick start plan</button>
                     {lastGeneratedDraft && <button className="secondary" onClick={() => openPlanIntake('replace')}>Regenerate last draft</button>}
                   </div>
                 </div>
@@ -573,6 +671,9 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                         const unitOptions = getSuggestedUnits(g, draft.units.weight);
                         const periodOptions = getSuggestedPeriods(g);
                         const hintText = getGoalHintText(g);
+                        const sessionPlan = normalizeSessionPlan(g.sessionPlan);
+                        const supportsSessionPlanning = isSessionPlanningGoal(g);
+                        const sessionDetailsOpen = expandedSessionGoalId === g.id;
 
                         return <div className="goal-row" key={g.id}>
                           <div className="mobile-field" data-label="What would you like to achieve?">
@@ -627,7 +728,87 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                           <div className="mobile-field" data-label="Action">
                             <button className="secondary" onClick={() => removeGoal(activeCat.id, g.id)}>Delete</button>
                           </div>
+                          {supportsSessionPlanning && (
+                            <div className="goal-session-toggle-row">
+                              <button
+                                type="button"
+                                className={sessionDetailsOpen ? 'quick-chip active goal-session-toggle' : 'quick-chip goal-session-toggle'}
+                                onClick={() => setExpandedSessionGoalId((prev) => prev === g.id ? null : g.id)}
+                              >
+                                {sessionDetailsOpen ? 'Hide session details' : 'Session details'}
+                              </button>
+                            </div>
+                          )}
                           {hintText && <div className="goal-row-hint">{hintText}</div>}
+                          {supportsSessionPlanning && sessionDetailsOpen && (
+                            <div className="goal-session-editor">
+                              <strong>Session plan</strong>
+                              <div className="goal-session-days">
+                                {SESSION_DAY_OPTIONS.map((day) => {
+                                  const active = sessionPlan.days.includes(day);
+                                  return (
+                                    <button
+                                      key={`${g.id}-day-${day}`}
+                                      type="button"
+                                      className={active ? 'quick-chip active' : 'quick-chip'}
+                                      onClick={() => {
+                                        const nextDays = active
+                                          ? sessionPlan.days.filter((item) => item !== day)
+                                          : [...sessionPlan.days, day];
+                                        updateGoal(activeCat.id, g.id, { sessionPlan: { ...sessionPlan, days: nextDays } });
+                                      }}
+                                    >
+                                      {day}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="goal-session-grid">
+                                <label className="field">
+                                  <span>Focus for this session</span>
+                                  <input
+                                    value={sessionPlan.focus}
+                                    onChange={(e) => updateGoal(activeCat.id, g.id, { sessionPlan: { ...sessionPlan, focus: e.target.value } })}
+                                    placeholder="Example: chest day, back day, intervals"
+                                  />
+                                </label>
+                                <label className="field">
+                                  <span>Resource link</span>
+                                  <input
+                                    value={sessionPlan.resourceUrl}
+                                    onChange={(e) => updateGoal(activeCat.id, g.id, { sessionPlan: { ...sessionPlan, resourceUrl: e.target.value } })}
+                                    placeholder="https://..."
+                                  />
+                                </label>
+                              </div>
+                              <div className="goal-session-grid">
+                                <label className="field goal-planner-full">
+                                  <span>Session notes / exercise list</span>
+                                  <textarea
+                                    rows="3"
+                                    value={sessionPlan.instructions}
+                                    onChange={(e) => updateGoal(activeCat.id, g.id, { sessionPlan: { ...sessionPlan, instructions: e.target.value } })}
+                                    placeholder="Example: Bench press 4x8, incline dumbbells 3x10, pushups finisher"
+                                  />
+                                </label>
+                              </div>
+                              <div className="goal-session-grid">
+                                <label className="field goal-planner-full">
+                                  <span>Image link (optional)</span>
+                                  <input
+                                    value={sessionPlan.imageUrl}
+                                    onChange={(e) => updateGoal(activeCat.id, g.id, { sessionPlan: { ...sessionPlan, imageUrl: e.target.value } })}
+                                    placeholder="https://.../exercise-reference.jpg"
+                                  />
+                                </label>
+                              </div>
+                              {sessionPlan.imageUrl && (
+                                <div className="goal-session-image-preview">
+                                  <img src={sessionPlan.imageUrl} alt={`${g.name} session reference`} />
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>;
                       })}
 
@@ -647,7 +828,7 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                   </div>
                 ) : (
                   <div className="empty-state">
-                    No focus areas defined yet. Use the planner to create one from a goal.
+                    Every plan starts somewhere. Add one goal and we will help you shape the next steps.
                   </div>
                 )}
               </>
@@ -677,11 +858,12 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
 
         </section>
       </div>
+      )}
       {showPlanIntakeDialog && (
         <div className="submodal-backdrop">
           <div className="submodal-content planner-submodal" style={plannerSubmodalStyle} onClick={(e) => e.stopPropagation()}>
             <div className="planner-submodal-header">
-              <h3 style={{ marginBottom: 8 }}>{planIntakeMode === 'replace' ? 'Regenerate your plan' : 'Build your plan'}</h3>
+              <h3 style={{ marginBottom: 8 }}>{planIntakeMode === 'replace' ? 'Refresh your plan' : 'Start your plan'}</h3>
               <p style={{ marginBottom: 0, color: '#64748b' }}>
                 Tell us your goal, where you are now, and where you want to go. We will suggest a practical draft plan you can edit.
               </p>
@@ -689,6 +871,15 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                 <div className="settings-hint" style={{ marginTop: 10, marginBottom: 0 }}>
                   <strong>Tip:</strong>
                   <p>Reopen and change these answers anytime, then regenerate the draft before you click Apply.</p>
+                </div>
+              )}
+              {coachPreview && (
+                <div className="settings-hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                  <strong>Coach preview</strong>
+                  <p style={{ marginTop: 6 }}><strong>Long-term:</strong> {coachPreview.strategy.longTerm}</p>
+                  <p style={{ marginTop: 6 }}><strong>Next best action:</strong> {coachPreview.nextBestAction}</p>
+                  <p style={{ marginTop: 6 }}><strong>Daily:</strong> {(coachPreview.execution.daily || []).slice(0, 2).join(' | ') || 'Will be generated after intake.'}</p>
+                  <p style={{ marginTop: 6 }}><strong>Weekly:</strong> {(coachPreview.execution.weekly || []).slice(0, 2).join(' | ') || 'Will be generated after intake.'}</p>
                 </div>
               )}
             </div>
@@ -793,6 +984,95 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                 </label>
 
                 <div className="settings-hint" style={{ marginBottom: 12 }}>
+                  <strong>Flow fit template</strong>
+                  <p>Fill this so Coach can generate the full plan and a repeat-use review.</p>
+                </div>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Why does this goal matter to you?</span>
+                    <textarea
+                      rows="2"
+                      value={planIntake.motivationWhy}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, motivationWhy: e.target.value }))}
+                      placeholder="Example: I want better energy and confidence."
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Where are you right now?</span>
+                    <textarea
+                      rows="2"
+                      value={planIntake.currentReality}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, currentReality: e.target.value }))}
+                      placeholder="Example: I am inconsistent after busy workdays."
+                    />
+                  </label>
+                </div>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>What does success look like week to week?</span>
+                    <input
+                      value={planIntake.successDefinition}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, successDefinition: e.target.value }))}
+                      placeholder="Example: 4 workouts, 6.5h sleep average, one weekly review"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Confidence level (1-10)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={planIntake.confidenceScore}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, confidenceScore: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      onBlur={() => setPlanIntake((p) => ({ ...p, confidenceScore: Math.min(10, Math.max(1, Number(p.confidenceScore) || 7)) }))}
+                    />
+                  </label>
+                </div>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>Preferred check-in rhythm</span>
+                    <select
+                      value={planIntake.checkInPreference}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, checkInPreference: e.target.value }))}
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="3-times-week">3 times per week</option>
+                      <option value="2-times-week">2 times per week</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Most likely reason you may drop off</span>
+                    <input
+                      value={planIntake.likelyDropOffReason}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, likelyDropOffReason: e.target.value }))}
+                      placeholder="Example: Meetings run late and I feel drained"
+                    />
+                  </label>
+                </div>
+
+                <div className="goal-planner-grid">
+                  <label className="field">
+                    <span>What makes this enjoyable for you?</span>
+                    <input
+                      value={planIntake.enjoymentAnchor}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, enjoymentAnchor: e.target.value }))}
+                      placeholder="Example: Training with music or tracking streaks"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Who can support accountability?</span>
+                    <input
+                      value={planIntake.supportPeople}
+                      onChange={(e) => setPlanIntake((p) => ({ ...p, supportPeople: e.target.value }))}
+                      placeholder="Example: Friend + Sunday check-in"
+                    />
+                  </label>
+                </div>
+
+                <div className="settings-hint" style={{ marginBottom: 12 }}>
                   <strong>{planFeedback.isAggressive ? 'Gentle reality check' : 'Planning note'}</strong>
                   <p>{planFeedback.message}</p>
                   {planFeedback.isAggressive && (
@@ -859,10 +1139,21 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                   </div>
                 )}
 
+                {flowReadinessPreview && (
+                  <div className="settings-hint" style={{ marginBottom: 12 }}>
+                    <strong>Flow viability review</strong>
+                    <p style={{ marginTop: 6 }}><strong>Come-back likelihood:</strong> {flowReadinessPreview.comebackScore}/100</p>
+                    <p style={{ marginTop: 6 }}><strong>Verdict:</strong> {flowReadinessPreview.verdict}</p>
+                    <p style={{ marginTop: 6 }}><strong>Rhythm:</strong> {flowReadinessPreview.rhythmRecommendation}</p>
+                    <p style={{ marginTop: 6 }}><strong>First review prompt:</strong> {flowReadinessPreview.reviewPrompt}</p>
+                    <p style={{ marginTop: 6 }}><strong>Suggested improvements:</strong> {(flowReadinessPreview.improvements || []).join(' | ')}</p>
+                  </div>
+                )}
+
 
             </div>{/* /.planner-submodal-body */}
             <div className="submodal-actions planner-submodal-actions">
-              <button type="button" className="secondary" onClick={closePlanIntake}>Cancel</button>
+              <button type="button" className="secondary" onClick={() => closePlanIntake({ defer: true })}>{intakeOnlyMode ? 'Fill later' : 'Cancel'}</button>
               <button type="button" className="primary" onClick={() => generatePlanFromIntake(planIntakeMode)}>{planIntakeMode === 'replace' ? 'Regenerate draft plan' : 'Generate draft plan'}</button>
             </div>
           </div>
