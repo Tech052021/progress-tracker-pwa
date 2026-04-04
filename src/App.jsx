@@ -1424,9 +1424,10 @@ function App() {
                 ))}
               </div>
             </div>
+
           </section>
 
-          <section className="daily-planner-grid">
+          <section className="daily-planner-grid planner-board-grid">
             <article className="card planner-card planner-todo">
               <h3>To Do List</h3>
               <div className="planner-list">
@@ -1467,15 +1468,16 @@ function App() {
                   />
                 </div>
               ))}
-              <div className="planner-reminder-block">
-                <h4>Reminder To</h4>
-                <textarea
-                  rows={2}
-                  value={planner.reminder || ''}
-                  onChange={(e) => updatePlanner({ reminder: e.target.value })}
-                  placeholder="One important reminder for today"
-                />
-              </div>
+            </article>
+
+            <article className="card planner-card planner-reminder">
+              <h3>Reminder To</h3>
+              <textarea
+                rows={2}
+                value={planner.reminder || ''}
+                onChange={(e) => updatePlanner({ reminder: e.target.value })}
+                placeholder="One important reminder for today"
+              />
             </article>
 
             <article className="card planner-card planner-meals">
