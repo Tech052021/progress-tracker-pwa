@@ -4319,7 +4319,7 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .journey-main-screen::before {
-  content: '';
+  content: none;
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -4340,9 +4340,15 @@ body::-webkit-scrollbar-thumb:hover {
 
 .quest-chart-card.quest-chart-full {
   width: 100%;
-  max-width: 420px;
+  max-width: 390px;
   aspect-ratio: 10 / 14.5;
-  min-height: 480px;
+  min-height: 478px;
+  --quest-step-text-size: clamp(9px, 0.78vw, 11px);
+  --quest-step-pct-size: clamp(9px, 0.8vw, 11px);
+  --quest-footer-size: clamp(10px, 0.95vw, 14px);
+  --quest-footer-sub-size: clamp(9px, 0.78vw, 11px);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   max-height: none;
   margin-inline: auto;
   border-radius: 18px;
@@ -4723,9 +4729,10 @@ body::-webkit-scrollbar-thumb:hover {
 
 .quest-map-canvas {
   position: relative;
-  min-height: 285px;
-  margin-top: 4px;
-  margin-bottom: 10px;
+  min-height: 286px;
+  margin-top: 8px;
+  margin-bottom: 0;
+  padding-bottom: 12px;
   position: relative;
   z-index: 1;
 }
@@ -4737,12 +4744,40 @@ body::-webkit-scrollbar-thumb:hover {
 .quest-map-point {
   position: absolute;
   display: grid;
-  grid-template-columns: 24px minmax(120px, 1fr);
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: 20px minmax(60px, 1fr);
+  gap: 6px;
+  align-items: start;
   transform: translate(-2%, -50%);
-  max-width: 190px;
+  width: 38%;
+  max-width: none;
   z-index: 1;
+}
+
+.quest-map-canvas.has-many-points .quest-map-point {
+  width: 37%;
+}
+
+.quest-map-point.compact {
+  grid-template-columns: 16px minmax(56px, 1fr);
+  gap: 5px;
+}
+
+.quest-map-point.compact .quest-step-index {
+  width: 16px;
+  height: 16px;
+  font-size: var(--quest-step-text-size);
+}
+
+.quest-map-point.compact .quest-step-label {
+  font-size: var(--quest-step-text-size);
+}
+
+.quest-map-point.compact .quest-step-pct-inline {
+  font-size: var(--quest-step-pct-size);
+}
+
+.quest-map-point.compact .quest-step-progress {
+  width: 66px;
 }
 
 .quest-map-point-btn {
@@ -4767,45 +4802,52 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .quest-step-index {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 12px;
+  align-self: start;
+  margin-top: 1px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: var(--quest-step-text-size);
+  line-height: 1;
   background: rgba(255,255,255,0.88);
   color: #0f172a;
 }
 
 .quest-step-main {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .quest-step-label {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--quest-step-text-size);
   font-weight: 700;
   color: rgba(255,255,255,0.95);
   text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .quest-step-pct-inline {
   margin: 0;
-  font-size: clamp(18px, 1.9vw, 22px);
+  font-size: var(--quest-step-pct-size);
   line-height: 1;
-  font-weight: 900;
+  font-weight: 800;
   color: #fff9dd;
   text-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 .quest-step-progress {
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   overflow: hidden;
   background: rgba(150, 220, 255, 0.45);
-  width: 88px;
+  width: 72px;
 }
 
 .quest-step-fill {
@@ -4816,28 +4858,78 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 .quest-chart-footer {
-  margin-top: auto;
-  padding-top: 10px;
+  margin-top: 0;
+  min-height: 12.5%;
+  padding: 6px 0 7px;
   border-top: 1px solid rgba(255,255,255,0.25);
-  font-size: clamp(24px, 2.5vw, 28px);
+  font-size: var(--quest-footer-size);
   letter-spacing: -0.02em;
   color: #fff7d1;
   text-shadow: 0 2px 8px rgba(0,0,0,0.35);
   position: relative;
   z-index: 1;
   text-align: center;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+}
+
+.quest-chart-footer strong {
+  font-size: 0.82em;
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.quest-chart-goal-count {
+  margin: 0;
+  font-size: var(--quest-footer-sub-size);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: rgba(255, 250, 220, 0.86);
+}
+
+.quest-chart-goal-list {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(230, 241, 255, 0.9);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .quest-chart-dots {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+@media (min-width: 1100px) {
+  .journey-category-grid {
+    gap: 12px;
+  }
+
+  .quest-chart-card.quest-chart-full {
+    max-width: 370px;
+    min-height: 442px;
+    --quest-step-text-size: 10px;
+    --quest-step-pct-size: 10px;
+    --quest-footer-size: 13px;
+    --quest-footer-sub-size: 10px;
+  }
+
+  .quest-map-canvas {
+    min-height: 252px;
+  }
+
+  .quest-step-progress {
+    width: 68px;
+  }
 }
 
 .quest-chart-dot {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -4912,9 +5004,43 @@ body::-webkit-scrollbar-thumb:hover {
   gap: 8px;
 }
 
+@media (max-width: 900px) {
+  .journey-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .quest-chart-card.quest-chart-full {
+    max-width: none;
+    min-height: 410px;
+    --quest-step-text-size: 9.5px;
+    --quest-step-pct-size: 9.5px;
+    --quest-footer-size: 12px;
+    --quest-footer-sub-size: 9.5px;
+  }
+
+  .quest-map-canvas {
+    min-height: 230px;
+  }
+
+  .quest-map-point {
+    width: 39%;
+  }
+
+}
+
 @media (max-width: 640px) {
+  .journey-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .quest-chart-card {
     min-height: 430px;
+    --quest-step-text-size: 9px;
+    --quest-step-pct-size: 9px;
+    --quest-footer-size: 11px;
+    --quest-footer-sub-size: 9px;
   }
 
   .quest-map-canvas {
@@ -4922,27 +5048,34 @@ body::-webkit-scrollbar-thumb:hover {
   }
 
   .quest-map-point {
-    max-width: 160px;
-  }
-
-  .quest-step-label {
-    font-size: 13px;
-  }
-
-  .quest-step-pct-inline {
-    font-size: 18px;
-  }
-
-  .quest-chart-footer {
-    font-size: 22px;
+    width: 39%;
   }
 
   .quest-chart-card.quest-chart-full {
-    width: min(520px, 100%);
+    width: 100%;
     aspect-ratio: 10 / 14.5;
-    min-height: 470px;
+    min-height: 390px;
     max-height: none;
     border-radius: 14px;
+  }
+}
+
+@media (max-width: 460px) {
+  .journey-category-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 860px) {
+  .quest-chart-card.quest-chart-full {
+    --quest-step-text-size: 9px;
+    --quest-step-pct-size: 9px;
+    --quest-footer-size: 11px;
+    --quest-footer-sub-size: 9px;
+  }
+
+  .journey-main-screen--single .journey-category-grid {
+    min-height: clamp(360px, calc(100dvh - 220px), 620px);
   }
 }
 
