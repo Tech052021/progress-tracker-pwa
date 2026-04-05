@@ -1,0 +1,59 @@
+<svg width="900" height="1400" viewBox="0 0 900 1400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="emberSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5b1f1d"/>
+      <stop offset="34%" stop-color="#7a2923"/>
+      <stop offset="68%" stop-color="#9a3a2e"/>
+      <stop offset="100%" stop-color="#6f2729"/>
+    </linearGradient>
+    <radialGradient id="flareA" cx="0.75" cy="0.16" r="0.4">
+      <stop offset="0%" stop-color="#ffd58c" stop-opacity="0.52"/>
+      <stop offset="100%" stop-color="#ffd58c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="flareB" cx="0.22" cy="0.82" r="0.46">
+      <stop offset="0%" stop-color="#ff7f6b" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#ff7f6b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lavaGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffc86b"/>
+      <stop offset="45%" stop-color="#ff8b3d"/>
+      <stop offset="100%" stop-color="#d64b2e"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5a3030"/>
+      <stop offset="100%" stop-color="#2f1c24"/>
+    </linearGradient>
+    <pattern id="embers" width="120" height="120" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="20" r="1.8" fill="#ffd18f" opacity="0.5"/>
+      <circle cx="52" cy="64" r="1.3" fill="#ff9a59" opacity="0.42"/>
+      <circle cx="96" cy="38" r="1.4" fill="#ffd6a1" opacity="0.46"/>
+      <circle cx="104" cy="96" r="1.6" fill="#ff8b55" opacity="0.4"/>
+      <circle cx="72" cy="108" r="1" fill="#ffdcb8" opacity="0.5"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="1400" fill="url(#emberSky)"/>
+  <rect width="900" height="1400" fill="url(#flareA)"/>
+  <rect width="900" height="1400" fill="url(#flareB)"/>
+
+  <path d="M0 760 C150 710 300 730 440 850 C590 974 730 998 900 956 L900 1400 L0 1400 Z" fill="url(#rock)" opacity="0.86"/>
+  <path d="M0 980 C170 930 320 970 470 1088 C600 1188 760 1220 900 1200 L900 1400 L0 1400 Z" fill="#341f28" opacity="0.9"/>
+
+  <g opacity="0.9">
+    <path d="M90 1080 C168 980 220 928 286 864 C334 928 340 1022 296 1100 C236 1166 160 1180 98 1160 Z" fill="url(#lavaGlow)"/>
+    <path d="M346 1130 C410 1032 460 980 526 916 C578 984 584 1066 540 1144 C490 1202 420 1210 358 1194 Z" fill="url(#lavaGlow)"/>
+    <path d="M620 1088 C680 1008 728 958 786 904 C832 958 840 1036 802 1110 C756 1168 692 1180 636 1166 Z" fill="url(#lavaGlow)"/>
+  </g>
+
+  <g opacity="0.76">
+    <path d="M162 836 L252 650 L346 836 Z" fill="#6c3b33"/>
+    <path d="M284 860 L410 604 L540 860 Z" fill="#5c302e"/>
+    <path d="M508 840 L610 648 L714 840 Z" fill="#70403a"/>
+  </g>
+
+  <ellipse cx="646" cy="930" rx="108" ry="46" fill="#ffd084" opacity="0.52"/>
+  <ellipse cx="646" cy="930" rx="154" ry="72" fill="#ff9b4e" opacity="0.22"/>
+
+  <rect width="900" height="1400" fill="url(#embers)" opacity="0.6"/>
+  <rect x="0" y="1244" width="900" height="156" fill="#2f1822" opacity="0.44"/>
+</svg>

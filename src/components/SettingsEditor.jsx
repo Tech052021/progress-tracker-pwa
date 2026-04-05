@@ -225,6 +225,46 @@ function migrateUnits(data) {
   };
 }
 
+function migrateRewards(data) {
+  const rewards = data.settings?.rewards;
+  if (!Array.isArray(rewards)) return ['Coffee break', 'Movie night', 'Favorite snack'];
+  return rewards.filter(Boolean).map((reward) => String(reward));
+}
+
+function migrateMotivationReward(data) {
+  const reward = data.settings?.motivationReward;
+  if (!reward || typeof reward !== 'object') {
+    return {
+      title: '',
+      targetAmount: 0,
+      currency: 'USD',
+      moneyPerCoin: 1,
+      requireGoalCompletion: true,
+      shopItems: [],
+      purchasedItemIds: []
+    };
+  }
+
+  return {
+    title: String(reward.title || ''),
+    targetAmount: Number(reward.targetAmount) || 0,
+    currency: String(reward.currency || 'USD'),
+    moneyPerCoin: Math.max(0, Number(reward.moneyPerCoin) || 1),
+    requireGoalCompletion: reward.requireGoalCompletion !== false,
+    shopItems: Array.isArray(reward.shopItems)
+      ? reward.shopItems.map((item) => ({
+          id: String(item?.id || uid()),
+          name: String(item?.name || ''),
+          price: Math.max(0, Number(item?.price) || 0),
+          url: String(item?.url || '')
+        })).filter((item) => item.name)
+      : [],
+    purchasedItemIds: Array.isArray(reward.purchasedItemIds)
+      ? reward.purchasedItemIds.map((itemId) => String(itemId))
+      : []
+  };
+}
+
 function convertWeightValue(value, fromUnit, toUnit) {
   if (fromUnit === toUnit) return value;
   const parsed = Number(value);
@@ -287,7 +327,9 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     profile: migrateProfile(data),
     goalPlan: migrateGoalPlan(data),
     units: migrateUnits(data),
-    categories: migrateCategories(data)
+    categories: migrateCategories(data),
+    rewards: migrateRewards(data),
+    motivationReward: migrateMotivationReward(data)
   }));
   // Track last added goal so we can autofocus its name input
   const [lastAddedGoalId, setLastAddedGoalId] = useState(null);
@@ -505,6 +547,55 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     setDraft((d) => ({ ...d, profile: { ...d.profile, ...patch } }));
   };
 
+  const addReward = () => {
+    setDraft((d) => ({ ...d, rewards: [...d.rewards, ''] }));
+  };
+
+  const updateReward = (index, value) => {
+    setDraft((d) => ({
+      ...d,
+      rewards: d.rewards.map((reward, rewardIndex) => rewardIndex === index ? value : reward)
+    }));
+  };
+
+  const removeReward = (index) => {
+    setDraft((d) => ({
+      ...d,
+      rewards: d.rewards.filter((_, rewardIndex) => rewardIndex !== index)
+    }));
+  };
+
+  const addShopItem = () => {
+    setDraft((d) => ({
+      ...d,
+      motivationReward: {
+        ...(d.motivationReward || {}),
+        shopItems: [...(d.motivationReward?.shopItems || []), { id: uid(), name: '', price: 0, url: '' }]
+      }
+    }));
+  };
+
+  const updateShopItem = (itemId, patch) => {
+    setDraft((d) => ({
+      ...d,
+      motivationReward: {
+        ...(d.motivationReward || {}),
+        shopItems: (d.motivationReward?.shopItems || []).map((item) => item.id === itemId ? { ...item, ...patch } : item)
+      }
+    }));
+  };
+
+  const removeShopItem = (itemId) => {
+    setDraft((d) => ({
+      ...d,
+      motivationReward: {
+        ...(d.motivationReward || {}),
+        shopItems: (d.motivationReward?.shopItems || []).filter((item) => item.id !== itemId),
+        purchasedItemIds: (d.motivationReward?.purchasedItemIds || []).filter((id) => id !== itemId)
+      }
+    }));
+  };
+
   function findGoalTarget(categories, nameMatcher) {
     for (const c of categories) {
       for (const g of c.goals) {
@@ -538,6 +629,25 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
     const uvmTopicsPerMonth = findGoalTarget(categoriesToPersist, 'uvm');
     const aiExperimentsPerMonth = findGoalTarget(categoriesToPersist, 'ai');
     const targetWeight = findGoalTarget(categoriesToPersist, 'weight');
+    const rewardsToPersist = (draft.rewards || []).map((reward) => String(reward || '').trim()).filter(Boolean);
+    const motivationRewardToPersist = {
+      title: String(draft.motivationReward?.title || '').trim(),
+      targetAmount: Math.max(0, Number(draft.motivationReward?.targetAmount) || 0),
+      currency: String(draft.motivationReward?.currency || 'USD').trim() || 'USD',
+      moneyPerCoin: Math.max(0, Number(draft.motivationReward?.moneyPerCoin) || 1),
+      requireGoalCompletion: draft.motivationReward?.requireGoalCompletion !== false,
+      shopItems: (draft.motivationReward?.shopItems || [])
+        .map((item) => ({
+          id: String(item?.id || uid()),
+          name: String(item?.name || '').trim(),
+          price: Math.max(0, Number(item?.price) || 0),
+          url: String(item?.url || '').trim()
+        }))
+        .filter((item) => item.name),
+      purchasedItemIds: (draft.motivationReward?.purchasedItemIds || []).map((itemId) => String(itemId))
+    };
+    const validShopIds = new Set(motivationRewardToPersist.shopItems.map((item) => item.id));
+    motivationRewardToPersist.purchasedItemIds = motivationRewardToPersist.purchasedItemIds.filter((itemId) => validShopIds.has(itemId));
 
     setData((prev) => ({
       ...prev,
@@ -550,6 +660,8 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
       settings: {
         ...prev.settings,
         categories: categoriesToPersist,
+        rewards: rewardsToPersist,
+        motivationReward: motivationRewardToPersist,
         workoutsPerWeek,
         leetcodePerWeek,
         poolPracticePerWeek,
@@ -582,7 +694,9 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
       profile: migrateProfile(data),
       goalPlan: migrateGoalPlan(data),
       units: migrateUnits(data),
-      categories: migrateCategories(data)
+      categories: migrateCategories(data),
+      rewards: migrateRewards(data),
+      motivationReward: migrateMotivationReward(data)
     });
     if (typeof onClose === 'function') onClose();
   };
@@ -832,6 +946,158 @@ export default function SettingsEditor({ data, setData, onClose, onExportData, o
                   </div>
                 )}
               </>
+
+            <div className="form-card" style={{ marginTop: 12 }}>
+              <div className="category-header" style={{ marginBottom: 8 }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Reward cabinet</h3>
+                  <p className="helper-text" style={{ margin: '6px 0 0' }}>
+                    Add simple real-world treats you want your coins to point toward.
+                  </p>
+                </div>
+                <button type="button" className="secondary" onClick={addReward}>Add reward</button>
+              </div>
+
+              <div className="settings-hint" style={{ marginBottom: 10 }}>
+                <strong>Dream purchase motivation</strong>
+                <p>
+                  Set one major reward (for example: Rolex after becoming Director of AI), then map coins to money so progress feels tangible.
+                </p>
+              </div>
+
+              <div className="goal-planner-grid">
+                <label className="field">
+                  <span>Dream item / milestone reward</span>
+                  <input
+                    value={draft.motivationReward?.title || ''}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      motivationReward: { ...(d.motivationReward || {}), title: e.target.value }
+                    }))}
+                    placeholder="Example: Rolex after Director of AI"
+                  />
+                </label>
+                <label className="field">
+                  <span>Target price</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={draft.motivationReward?.targetAmount || 0}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      motivationReward: { ...(d.motivationReward || {}), targetAmount: Number(e.target.value) || 0 }
+                    }))}
+                  />
+                </label>
+                <label className="field">
+                  <span>Currency</span>
+                  <input
+                    value={draft.motivationReward?.currency || 'USD'}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      motivationReward: { ...(d.motivationReward || {}), currency: e.target.value.toUpperCase() }
+                    }))}
+                    placeholder="USD"
+                  />
+                </label>
+                <label className="field">
+                  <span>Money value per coin</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draft.motivationReward?.moneyPerCoin || 1}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      motivationReward: { ...(d.motivationReward || {}), moneyPerCoin: Math.max(0, Number(e.target.value) || 0) }
+                    }))}
+                  />
+                </label>
+              </div>
+
+              <label className="field" style={{ marginTop: 8 }}>
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={draft.motivationReward?.requireGoalCompletion !== false}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      motivationReward: { ...(d.motivationReward || {}), requireGoalCompletion: e.target.checked }
+                    }))}
+                    style={{ marginRight: 8 }}
+                  />
+                  Require all current goals on pace before marking dream reward as unlocked
+                </span>
+              </label>
+
+              <div className="settings-shop-catalog-head">
+                <h4>In-app shop catalog</h4>
+                <button type="button" className="secondary" onClick={addShopItem}>Add shop item</button>
+              </div>
+
+              <div className="settings-shop-catalog">
+                {(draft.motivationReward?.shopItems || []).map((item) => (
+                  <div key={item.id} className="settings-shop-row">
+                    <input
+                      className="goal-name"
+                      value={item.name}
+                      onChange={(e) => updateShopItem(item.id, { name: e.target.value })}
+                      placeholder="Item name"
+                    />
+                    <input
+                      className="goal-target"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={item.price}
+                      onChange={(e) => updateShopItem(item.id, { price: Number(e.target.value) || 0 })}
+                      placeholder="Price"
+                    />
+                    <input
+                      className="goal-unit"
+                      value={item.url || ''}
+                      onChange={(e) => updateShopItem(item.id, { url: e.target.value })}
+                      placeholder="Shop URL (optional)"
+                    />
+                    <button type="button" className="secondary" onClick={() => removeShopItem(item.id)}>Remove</button>
+                  </div>
+                ))}
+              </div>
+
+              {!(draft.motivationReward?.shopItems || []).length && (
+                <p className="helper-text" style={{ marginTop: 8 }}>
+                  Add items here to create your personal post-goal shop experience.
+                </p>
+              )}
+
+              <div className="settings-reward-list">
+                {(draft.rewards || []).map((reward, index) => (
+                  <div key={`reward-${index}`} className="settings-reward-row">
+                    <input
+                      className="goal-name"
+                      value={reward}
+                      onChange={(e) => updateReward(index, e.target.value)}
+                      placeholder="Example: Buy a new book"
+                      aria-label={`Reward ${index + 1}`}
+                    />
+                    <button type="button" className="secondary" onClick={() => removeReward(index)}>Remove</button>
+                  </div>
+                ))}
+              </div>
+
+              {!(draft.rewards || []).length && (
+                <p className="helper-text" style={{ marginBottom: 0 }}>
+                  No rewards yet. Add a few calming, enjoyable things so the coin wallet feels meaningful.
+                </p>
+              )}
+
+              {draft.motivationReward?.targetAmount > 0 && (
+                <p className="helper-text" style={{ marginTop: 8, marginBottom: 0 }}>
+                  At {draft.motivationReward.moneyPerCoin || 0} {draft.motivationReward.currency || 'USD'} per coin, you need about {Math.ceil((draft.motivationReward.targetAmount || 0) / Math.max(0.0001, Number(draft.motivationReward.moneyPerCoin) || 1))} coins to unlock this purchase.
+                </p>
+              )}
+            </div>
 
             <div className="settings-actions settings-actions-sticky" style={{ marginTop: 16 }}>
               <div className="settings-backup-tools">

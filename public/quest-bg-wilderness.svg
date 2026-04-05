@@ -1,0 +1,86 @@
+<svg width="900" height="1400" viewBox="0 0 900 1400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d5e9a5"/>
+      <stop offset="24%" stop-color="#89b55d"/>
+      <stop offset="56%" stop-color="#4c7f3c"/>
+      <stop offset="100%" stop-color="#203a1d"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0.72" cy="0.15" r="0.34">
+      <stop offset="0%" stop-color="#fff9d6" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#ffe6a8" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#ffe6a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mountainMain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d4d3c2"/>
+      <stop offset="55%" stop-color="#9a9278"/>
+      <stop offset="100%" stop-color="#655e4a"/>
+    </linearGradient>
+    <linearGradient id="mountainDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#958e74"/>
+      <stop offset="100%" stop-color="#59543f"/>
+    </linearGradient>
+    <linearGradient id="forestMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a7538"/>
+      <stop offset="100%" stop-color="#264425"/>
+    </linearGradient>
+    <linearGradient id="forestFront" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#33562b"/>
+      <stop offset="100%" stop-color="#182f17"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e5d7ad"/>
+      <stop offset="100%" stop-color="#9f8458"/>
+    </linearGradient>
+    <pattern id="grain" width="120" height="120" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="14" r="1.3" fill="#fff" opacity="0.05"/>
+      <circle cx="40" cy="72" r="0.9" fill="#000" opacity="0.07"/>
+      <circle cx="76" cy="22" r="1.1" fill="#fff" opacity="0.05"/>
+      <circle cx="92" cy="96" r="1.4" fill="#000" opacity="0.06"/>
+      <circle cx="62" cy="108" r="0.8" fill="#fff" opacity="0.05"/>
+      <circle cx="114" cy="34" r="1.2" fill="#000" opacity="0.06"/>
+    </pattern>
+    <filter id="softBlur" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+
+  <rect width="900" height="1400" fill="url(#sky)"/>
+  <rect width="900" height="1400" fill="url(#sunGlow)"/>
+
+  <g opacity="0.58" filter="url(#softBlur)">
+    <ellipse cx="180" cy="180" rx="210" ry="90" fill="#e9f6ca"/>
+    <ellipse cx="520" cy="145" rx="250" ry="102" fill="#d8eeb2"/>
+    <ellipse cx="760" cy="220" rx="190" ry="76" fill="#cce3a7"/>
+  </g>
+
+  <path d="M360 230 L645 660 L135 660 Z" fill="url(#mountainMain)"/>
+  <path d="M670 280 L875 700 L470 700 Z" fill="url(#mountainDark)" opacity="0.9"/>
+  <path d="M410 340 L515 535 L318 535 Z" fill="#e7e1cd" opacity="0.66"/>
+
+  <path d="M0 540 C155 500 295 520 425 620 C555 724 706 740 900 710 L900 1400 L0 1400 Z" fill="url(#forestMid)"/>
+  <path d="M0 850 C220 780 390 830 560 970 C680 1070 780 1110 900 1095 L900 1400 L0 1400 Z" fill="url(#forestFront)"/>
+
+  <path d="M205 510 C430 635 600 720 660 900 C710 1060 575 1175 420 1318" stroke="url(#trail)" stroke-width="94" fill="none" stroke-linecap="round"/>
+  <path d="M130 810 C258 895 360 980 398 1088 C440 1220 370 1295 285 1368" stroke="url(#trail)" stroke-width="68" fill="none" stroke-linecap="round" opacity="0.9"/>
+
+  <g opacity="0.86">
+    <polygon points="40,760 84,640 128,760" fill="#2f5828"/>
+    <polygon points="90,810 140,672 188,810" fill="#2c5125"/>
+    <polygon points="138,780 176,678 212,780" fill="#355f2d"/>
+    <polygon points="720,840 768,706 816,840" fill="#2f5729"/>
+    <polygon points="772,880 816,746 858,880" fill="#284c23"/>
+    <polygon points="708,960 748,845 788,960" fill="#30582b"/>
+    <polygon points="56,1034 98,916 140,1034" fill="#2e5628"/>
+    <polygon points="110,1084 156,948 202,1084" fill="#274b23"/>
+    <polygon points="744,1126 788,988 832,1126" fill="#294d24"/>
+  </g>
+
+  <ellipse cx="215" cy="1132" rx="154" ry="98" fill="#2a2f22"/>
+  <ellipse cx="228" cy="1150" rx="98" ry="60" fill="#12160f"/>
+  <ellipse cx="232" cy="1174" rx="44" ry="30" fill="#ffbb52" opacity="0.93"/>
+  <ellipse cx="232" cy="1174" rx="68" ry="44" fill="#ffcf86" opacity="0.33" filter="url(#softBlur)"/>
+
+  <rect width="900" height="1400" fill="url(#grain)" opacity="0.55"/>
+  <rect x="0" y="1260" width="900" height="140" fill="#1e2f1a" opacity="0.45"/>
+</svg>

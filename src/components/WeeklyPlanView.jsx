@@ -3,11 +3,11 @@ import { DAYS_OF_WEEK, getDateForDayInWeek } from '../services/weeklyScheduleSer
 import { requestNotificationPermission, scheduleAlarmsForDay, clearAllAlarms } from '../services/alarmService';
 
 export default function WeeklyPlanView({
-  weeklySchedules,
-  goalDeadlineLog,
-  todayIso,
-  onTaskStatusChange,
-  onAlarmToggle
+  weeklySchedules = {},
+  goalDeadlineLog = [],
+  todayIso = new Date().toISOString().slice(0, 10),
+  onTaskStatusChange = () => {},
+  onAlarmToggle = () => {}
 }) {
   // Request notification permission and schedule alarms on mount
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function WeeklyPlanView({
       }
     });
 
-    goalDeadlineLog.forEach((log) => {
+    (goalDeadlineLog || []).forEach((log) => {
       const shift = log.daysShifted || 0;
       maxDeadlineShift = Math.max(maxDeadlineShift, shift);
     });

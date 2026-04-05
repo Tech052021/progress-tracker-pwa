@@ -5,10 +5,15 @@ const { useEffect, useMemo, useState, useRef } = React;
 import SettingsEditor from './components/SettingsEditor';
 import Clock from './components/Clock';
 import WeeklyPlanView from './components/WeeklyPlanView';
+import StoryCollectionTab from './components/StoryCollectionTab';
+import CoinCounter from './components/CoinCounter';
+import AdventureMap from './components/AdventureMap';
+import UnlockModal from './components/UnlockModal';
 import { useTheme } from './useTheme';
 import { buildSuggestedPlannerTasks, createSeedPlannerEntry } from './services/plannerService';
 import { buildWeeklySchedule, buildAccountabilityMessage, getWeekIdFromDate, calculateDeadlineShift, updateTaskStatus } from './services/weeklyScheduleService';
 import { loadJSON, saveJSON, createBackupAndPrune, enqueueMutation } from './services/storageAdapter';
+import { createDefaultQuestData, updateQuestOnTaskCompletion } from './services/questService';
 
 const STORAGE_KEY = 'progress_tracker_prod_v1';
 const DATA_VERSION = 2;
@@ -38,17 +43,49 @@ function inferGoalUnit(goalName, weightUnit = 'lb') {
 }
 
 function normalizeCategories(categories, weightUnit = 'lb') {
+  const defaultThemeSequence = ['wilderness', 'ocean', 'space'];
+  let fallbackThemeIndex = 0;
+
+  function normalizeMilestone(ms) {
+    if (!ms || typeof ms !== 'object') return null;
+    return {
+      id: ms.id || String(Math.random()).slice(2),
+      label: String(ms.label || ''),
+      targetDate: String(ms.targetDate || ''),
+      tasks: Array.isArray(ms.tasks) ? ms.tasks.map(t => ({
+        id: t.id || String(Math.random()).slice(2),
+        text: String(t.text || ''),
+        target: Math.max(0, Number(t.target) || 0),
+        logged: Math.max(0, Number(t.logged) || 0),
+        unit: String(t.unit || ''),
+      })) : [],
+      notes: String(ms.notes || ''),
+    };
+  }
+
   if (!Array.isArray(categories)) return [];
   return categories.map((category) => ({
     ...category,
     goals: Array.isArray(category.goals)
-      ? category.goals.map((goal) => ({
-        ...goal,
-        categoryId: goal.categoryId || category.id,
-        categoryName: goal.categoryName || category.name,
-        unit: goal.unit || inferGoalUnit(goal.name, weightUnit),
-        sessionPlan: normalizeSessionPlan(goal.sessionPlan)
-      }))
+      ? category.goals.map((goal) => {
+        const assignedDefaultTheme = defaultThemeSequence[fallbackThemeIndex % defaultThemeSequence.length];
+        fallbackThemeIndex += 1;
+        const normalizedTheme = ['wilderness', 'ocean', 'space', 'kingdom'].includes(goal.theme)
+          ? goal.theme
+          : assignedDefaultTheme;
+
+        return {
+          ...goal,
+          categoryId: goal.categoryId || category.id,
+          categoryName: goal.categoryName || category.name,
+          unit: goal.unit || inferGoalUnit(goal.name, weightUnit),
+          sessionPlan: normalizeSessionPlan(goal.sessionPlan),
+          milestones: Array.isArray(goal.milestones)
+            ? goal.milestones.map(normalizeMilestone).filter(Boolean)
+            : [],
+          theme: normalizedTheme,
+        };
+      })
       : []
   }));
 }
@@ -208,6 +245,16 @@ const defaultData = {
     careerBlockMinutes: 45,
     targetWeight: '',
     currentWeight: '',
+    rewards: [],
+    motivationReward: {
+      title: '',
+      targetAmount: 0,
+      currency: 'USD',
+      moneyPerCoin: 1,
+      requireGoalCompletion: true,
+      shopItems: [],
+      purchasedItemIds: []
+    },
     categories: createDefaultCategories(),
     units: {
       weight: 'lb',
@@ -234,7 +281,8 @@ const defaultData = {
   weeklyCheckIns: { entries: [] },
   dailyPlanner: { byDate: {} },
   weeklySchedules: {},
-  goalDeadlineLog: []
+  goalDeadlineLog: [],
+  questData: createDefaultQuestData()
 };
 
 function NextStrideLogo() {
@@ -371,6 +419,29 @@ function normalizeData(raw) {
     settings: {
       ...defaultData.settings,
       ...incomingSettings,
+      rewards: Array.isArray(incomingSettings.rewards) ? incomingSettings.rewards.filter(Boolean).map((reward) => String(reward)) : [],
+      motivationReward: {
+        ...defaultData.settings.motivationReward,
+        ...(incomingSettings.motivationReward && typeof incomingSettings.motivationReward === 'object' ? incomingSettings.motivationReward : {}),
+        title: String(incomingSettings.motivationReward?.title || ''),
+        targetAmount: Number(incomingSettings.motivationReward?.targetAmount) || 0,
+        currency: String(incomingSettings.motivationReward?.currency || defaultData.settings.motivationReward.currency),
+        moneyPerCoin: Math.max(0, Number(incomingSettings.motivationReward?.moneyPerCoin) || defaultData.settings.motivationReward.moneyPerCoin),
+        requireGoalCompletion: incomingSettings.motivationReward?.requireGoalCompletion !== false,
+        shopItems: Array.isArray(incomingSettings.motivationReward?.shopItems)
+          ? incomingSettings.motivationReward.shopItems
+              .map((item) => ({
+                id: String(item?.id || uid()),
+                name: String(item?.name || ''),
+                price: Math.max(0, Number(item?.price) || 0),
+                url: String(item?.url || '')
+              }))
+              .filter((item) => item.name)
+          : [],
+        purchasedItemIds: Array.isArray(incomingSettings.motivationReward?.purchasedItemIds)
+          ? incomingSettings.motivationReward.purchasedItemIds.map((itemId) => String(itemId))
+          : []
+      },
       categories: deriveCategories(incomingSettings.categories, normalizedWeightUnit),
       units: {
         ...defaultData.settings.units,
@@ -442,12 +513,13 @@ function useStoredData() {
 
 function App() {
   const [data, setData] = useStoredData();
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState('journey');
   const [dashLogOpen, setDashLogOpen] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsLaunchIntent, setSettingsLaunchIntent] = useState(null);
   const [goalQuizDeferredTab, setGoalQuizDeferredTab] = useState(null);
   const [showNavMenu, setShowNavMenu] = useState(false);
+  const [showJourneyInfo, setShowJourneyInfo] = useState(false);
   const navMenuRef = useRef(null);
   useEffect(() => {
     if (!showNavMenu) return;
@@ -459,6 +531,7 @@ function App() {
   }, [showNavMenu]);
   const { activeTheme, setActiveTheme, themes: themeMap } = useTheme();
   const [activeGoalCategoryId, setActiveGoalCategoryId] = useState(null);
+  const [selectedJourneyCategoryId, setSelectedJourneyCategoryId] = useState(null);
   const [goalsView, setGoalsView] = useState('details'); // 'details' or 'schedule'
   const [roadmapView, setRoadmapView] = useState('roadmap');
   const [progressView, setProgressView] = useState('goals');
@@ -468,6 +541,8 @@ function App() {
   const [skippedGoalIds, setSkippedGoalIds] = useState([]);
   const [checkinDraft, setCheckinDraft] = useState({ rating: 0, wentWell: '', toImprove: '' });
   const [checkinPopup, setCheckinPopup] = useState(null); // { goalId, goalName, dateIso, isUncheck }
+    // { categoryId, goalId } — looked up live from data so always fresh
+    const [adventureRef, setAdventureRef] = useState(null);
   const [checkinInputMode, setCheckinInputMode] = useState('text');
   const [checkinNote, setCheckinNote] = useState('');
   const [checkinRecording, setCheckinRecording] = useState(false);
@@ -477,14 +552,15 @@ function App() {
   const [newPlannerTaskText, setNewPlannerTaskText] = useState('');
   const [showWelcome, setShowWelcome] = useState(() => {
     const stored = localStorage.getItem('nextstride_welcome');
-    if (!stored) return true;
-    const { date, hasNewWork } = JSON.parse(stored);
-    if (date !== ISO_DATE()) return true;
-    if (hasNewWork) return true;
-    return false;
+    if (!stored) return false;
+    const { date } = JSON.parse(stored);
+    return date !== ISO_DATE();
   });
 
-  const [showQuote, setShowQuote] = useState(() => !showWelcome);
+  const [showQuote, setShowQuote] = useState(false);
+  const [activeUnlock, setActiveUnlock] = useState(null);
+  const [journeyPillarEditor, setJourneyPillarEditor] = useState(null);
+  const [journeyPillarDraft, setJourneyPillarDraft] = useState('0');
 
   const triggerGoalQuiz = (source = 'no-goals') => {
     setShowWelcome(false);
@@ -497,12 +573,14 @@ function App() {
   const dismissWelcome = () => {
     setShowWelcome(false);
     localStorage.setItem('nextstride_welcome', JSON.stringify({
-      date: ISO_DATE(),
-      hasNewWork: false,
+      date: ISO_DATE()
     }));
   };
 
-  useEffect(() => { setDashLogOpen(null); }, [tab]);
+  useEffect(() => {
+    setDashLogOpen(null);
+    setJourneyPillarEditor(null);
+  }, [tab]);
 
   // Track encouragement popups on mount
   useEffect(() => {
@@ -513,22 +591,65 @@ function App() {
   const addEntry = (bucket, entry) => {
     const timestamp = entry.timestamp || createEntryTimestamp(entry.date);
     const entryId = crypto.randomUUID();
-    setData((prev) => ({
-      ...prev,
-      entries: {
+    const nextEntry = { id: entryId, ...entry, timestamp };
+    let firstUnlock = null;
+
+    setData((prev) => {
+      const nextEntries = {
         ...prev.entries,
-        [bucket]: [{ id: entryId, ...entry, timestamp }, ...prev.entries[bucket]]
-      }
-    }));
+        [bucket]: [nextEntry, ...prev.entries[bucket]]
+      };
+
+      const activityLabelMap = {
+        workouts: 'Workout',
+        weights: 'Weight check-in',
+        leetcode: 'Coding practice',
+        uvm: 'Learning session',
+        journal: 'Journal entry',
+        mentor: 'Mentor session',
+        bugs: 'Bug fix',
+        pool: 'Pool practice',
+        goalUpdates: 'Goal progress'
+      };
+
+      const totalLogsAfterSave = countAllEntries(nextEntries);
+      const streakAfterSave = getActivityStreakDays(nextEntries, today);
+      const completionRate = periodTrackableGoals.length
+        ? Math.round((completedPeriodGoals / periodTrackableGoals.length) * 100)
+        : 0;
+
+      const questResult = updateQuestOnTaskCompletion(
+        prev.questData || createDefaultQuestData(),
+        {
+          goalName: entry.goalName || entry.title || entry.label || activityLabelMap[bucket] || 'Progress update',
+          categoryName: entry.categoryName || '',
+          activity: activityLabelMap[bucket] || 'Progress update',
+          value: Number(entry.amount ?? entry.duration ?? entry.weight ?? 1) || 1,
+          unit: entry.unit || ''
+        },
+        {
+          streakDays: streakAfterSave,
+          totalLogs: totalLogsAfterSave,
+          completionRate
+        }
+      );
+
+      firstUnlock = questResult.newUnlocks?.[0] || null;
+      const { newUnlocks, ...nextQuestData } = questResult;
+
+      return {
+        ...prev,
+        entries: nextEntries,
+        questData: nextQuestData
+      };
+    });
+
+    if (firstUnlock) {
+      setActiveUnlock(firstUnlock);
+    }
+
     enqueueMutation('entry_added', { bucket, entryId, entry: { ...entry, timestamp } });
     trackEvent('log_added', { bucket, goalId: entry.goalId || null, date: entry.date });
-    // Show welcome popup again after new work is logged
-    const stored = localStorage.getItem('nextstride_welcome');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      parsed.hasNewWork = true;
-      localStorage.setItem('nextstride_welcome', JSON.stringify(parsed));
-    }
   };
 
   const removeEntry = (bucket, id) => {
@@ -604,9 +725,6 @@ function App() {
     0
   );
   const hasNoGoals = totalConfiguredGoals === 0 && shortTermGoals.length === 0 && actionItems.length === 0;
-  const latestCoachNote = coachNotes.length
-    ? [...coachNotes].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
-    : null;
   const completedActionItems = actionItems.filter((item) => item.status === 'done').length;
 
   useEffect(() => {
@@ -672,6 +790,42 @@ function App() {
       setActiveGoalCategoryId(normalizedCategories[0].id);
     }
   }, [normalizedCategories, activeGoalCategoryId]);
+
+  const journeyCategories = useMemo(() => {
+    const seed = [
+      { id: 'health', name: 'Health', goals: [] },
+      { id: 'career', name: 'Career', goals: [] },
+      { id: 'hobby', name: 'Hobby', goals: [] },
+      { id: 'learning', name: 'Learning', goals: [] },
+    ];
+
+    const byName = new Map();
+    seed.forEach((category) => {
+      byName.set(String(category.name || '').trim().toLowerCase(), category);
+    });
+
+    // User categories override same-named defaults regardless of id shape.
+    normalizedCategories.forEach((category) => {
+      const key = String(category.name || '').trim().toLowerCase();
+      if (!key) return;
+      byName.set(key, category);
+    });
+
+    const merged = Array.from(byName.values());
+
+    // Keep the journey screen stable at four category cards.
+    return merged.slice(0, 4);
+  }, [normalizedCategories]);
+
+  useEffect(() => {
+    if (!journeyCategories.length) {
+      setSelectedJourneyCategoryId(null);
+      return;
+    }
+    if (!journeyCategories.some((category) => category.id === selectedJourneyCategoryId)) {
+      setSelectedJourneyCategoryId(journeyCategories[0].id);
+    }
+  }, [journeyCategories, selectedJourneyCategoryId]);
 
   const activeGoalCategory = normalizedCategories.find((category) => category.id === activeGoalCategoryId) || normalizedCategories[0] || null;
 
@@ -932,7 +1086,6 @@ function App() {
     return date.toISOString().slice(0, 10);
   };
 
-
   const updatePlanner = (updater) => {
     setData((prev) => {
       const existing = prev.dailyPlanner?.byDate?.[plannerDate] || seedPlannerForToday;
@@ -952,6 +1105,29 @@ function App() {
   };
 
   const planner = plannerEntry || seedPlannerForToday;
+
+  const resolveJourneyPillarConfig = (label = '') => {
+    const normalized = String(label).toLowerCase();
+    if (normalized.includes('cardio')) return { field: 'exerciseMinutes', unit: 'min', target: 30 };
+    if (normalized.includes('strength')) return { field: 'strengthMinutes', unit: 'min', target: 20 };
+    if (normalized.includes('protein')) return { field: 'proteinGrams', unit: 'g', target: 150 };
+    if (normalized.includes('water')) return { field: 'waterCups', unit: 'cups', target: 8 };
+    return null;
+  };
+
+  const openJourneyPillarEditor = (label) => {
+    const config = resolveJourneyPillarConfig(label);
+    if (!config) return;
+    setJourneyPillarDraft(String(Number(planner?.[config.field] || 0)));
+    setJourneyPillarEditor({ label, config });
+  };
+
+  const saveJourneyPillarEditor = () => {
+    if (!journeyPillarEditor?.config) return;
+    const numeric = Math.max(0, Number(journeyPillarDraft) || 0);
+    updatePlanner({ [journeyPillarEditor.config.field]: numeric });
+    setJourneyPillarEditor(null);
+  };
 
   const togglePlannerTask = (taskId) => {
     updatePlanner((prev) => ({
@@ -1430,6 +1606,155 @@ function App() {
   const completedPeriodGoals = periodTrackableGoals.filter((goal) => goalCount(goal) >= Number(goal.target || 0)).length;
   const openPeriodGoals = Math.max(0, periodTrackableGoals.length - completedPeriodGoals);
 
+  const journeyGoalCharts = useMemo(() => {
+    const withTheme = allTrackedGoals;
+    const plannerByDate = data.dailyPlanner?.byDate || {};
+
+    const milestonePct = (milestone) => {
+      const tasks = milestone?.tasks || [];
+      const total = tasks.reduce((sum, task) => sum + Math.max(0, Number(task.target) || 0), 0);
+      const logged = tasks.reduce((sum, task) => sum + Math.max(0, Number(task.logged) || 0), 0);
+      return total > 0 ? Math.min(100, Math.round((logged / total) * 100)) : 0;
+    };
+
+    const buildRecentPlannerEntries = (daysWindow) => {
+      const rows = [];
+      const base = new Date(`${today}T00:00:00`);
+      for (let i = daysWindow - 1; i >= 0; i -= 1) {
+        const d = new Date(base);
+        d.setDate(base.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        rows.push(plannerByDate[iso] || null);
+      }
+      return rows;
+    };
+
+    const buildHealthPillars = (goal) => {
+      const suggestedWindow = Number(goal.target || 30);
+      const daysWindow = Math.max(7, Math.min(90, Number.isFinite(suggestedWindow) && suggestedWindow > 0 ? suggestedWindow : 30));
+      const entries = buildRecentPlannerEntries(daysWindow);
+      const score = (predicate) => {
+        const hits = entries.reduce((sum, entry) => sum + (predicate(entry) ? 1 : 0), 0);
+        return Math.round((hits / daysWindow) * 100);
+      };
+
+      return [
+        { id: `${goal.id}-cardio`, label: 'Cardio', pct: score((entry) => Number(entry?.exerciseMinutes || 0) >= 30) },
+        { id: `${goal.id}-strength`, label: 'Strength', pct: score((entry) => Number(entry?.strengthMinutes || 0) >= 20) },
+        { id: `${goal.id}-protein`, label: 'Protein intake', pct: score((entry) => Number(entry?.proteinGrams || 0) >= 150) },
+        {
+          id: `${goal.id}-water`,
+          label: 'Water intake',
+          pct: score((entry) => Number(entry?.waterCups || 0) >= 8),
+        },
+      ];
+    };
+
+    return withTheme.map((goal, index) => {
+      const isHealthGoal = String(goal.categoryId || goal.categoryName || '').toLowerCase().includes('health');
+      const rawMilestones = Array.isArray(goal.milestones) ? goal.milestones : [];
+      let renderedMilestones = isHealthGoal
+        ? buildHealthPillars(goal)
+        : rawMilestones.map((ms, msIndex) => ({
+        id: ms.id || `${goal.id}-ms-${msIndex}`,
+        label: String(ms.label || `Milestone ${msIndex + 1}`),
+        pct: milestonePct(ms),
+      }));
+
+      if (!renderedMilestones.length) {
+        const targetValue = Number(goal.target || 0);
+        const currentValue = goalCount(goal);
+        const pct = targetValue > 0 ? Math.min(100, Math.round((currentValue / targetValue) * 100)) : 0;
+        renderedMilestones = [{
+          id: `${goal.id}-base-progress`,
+          label: goal.name || `Goal ${index + 1}`,
+          pct,
+        }];
+      }
+
+      const overallPct = renderedMilestones.length
+        ? Math.round(renderedMilestones.reduce((sum, ms) => sum + ms.pct, 0) / renderedMilestones.length)
+        : 0;
+
+      const resolvedTheme = goal.theme || ['wilderness', 'ocean', 'space'][index % 3];
+
+      return {
+        goal,
+        title: goal.name || `Goal ${index + 1}`,
+        targetDate: goal.victoryDate || goal.dueDate || goal.targetDate || '',
+        theme: resolvedTheme,
+        milestones: renderedMilestones.slice(0, 4),
+        overallPct,
+        categoryName: goal.categoryName || '',
+        themeLabel: ({
+          wilderness: 'Wilderness Adventure',
+          ocean: 'Ocean Explorer',
+          space: 'Space Odyssey',
+          kingdom: 'Kingdom Quest',
+        })[resolvedTheme] || 'Adventure',
+      };
+    });
+  }, [allTrackedGoals, data.dailyPlanner?.byDate, data.entries, today]);
+
+  const allCategoryMapData = useMemo(() => {
+    const themes = ['wilderness', 'ocean', 'space', 'fire'];
+    const themeByCategoryName = {
+      health: 'wilderness',
+      career: 'ocean',
+      hobby: 'fire',
+      learning: 'space',
+    };
+    const fallbackByCategoryId = {
+      health: ['Cardio', 'Strength', 'Protein intake', 'Water intake'],
+      hobby: ['Practice', 'Consistency', 'Output', 'Reflection'],
+      learning: ['Study sessions', 'Concept mastery', 'Projects', 'Revision'],
+      career: ['Deep work', 'Skill growth', 'Networking', 'Execution'],
+    };
+
+    return journeyCategories.map((cat, catIdx) => {
+      const charts = journeyGoalCharts.filter((c) => c.goal.categoryId === cat.id);
+      const overallPct = Math.round(
+        charts.length ? charts.reduce((sum, c) => sum + c.overallPct, 0) / charts.length : 0
+      );
+
+      const points = [];
+      charts.forEach((chart) => {
+        const milestonePoints = Array.isArray(chart.milestones) && chart.milestones.length
+          ? chart.milestones
+          : [{ id: `${chart.goal.id}-overall`, label: chart.title, pct: chart.overallPct }];
+
+        milestonePoints.forEach((milestone) => {
+          if (points.length >= 4) return;
+          points.push({
+            id: milestone.id || `${chart.goal.id}-${points.length + 1}`,
+            label: String(milestone.label || chart.title),
+            pct: Math.max(0, Math.min(100, Number(milestone.pct) || 0)),
+          });
+        });
+      });
+
+      if (!points.length) {
+        const fallbackLabels = fallbackByCategoryId[cat.id] || ['Focus', 'Progress', 'Consistency', 'Momentum'];
+        fallbackLabels.slice(0, 4).forEach((label, idx) => {
+          points.push({ id: `${cat.id}-empty-${idx + 1}`, label, pct: 0 });
+        });
+      }
+
+      const categoryNameKey = String(cat.name || '').trim().toLowerCase();
+      const categoryKey = (categoryNameKey || `category-${catIdx + 1}`).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const resolvedTheme = themeByCategoryName[categoryNameKey] || themes[catIdx % themes.length];
+
+      return {
+        categoryId: cat.id,
+        categoryName: cat.name,
+        categoryKey,
+        theme: resolvedTheme,
+        overallPct,
+        goals: points.slice(0, 4),
+      };
+    });
+  }, [journeyCategories, journeyGoalCharts]);
+
   // ── Encouragement Engine ──────────────────────────────────
   const encouragement = useMemo(() => {
     const msgs = [];
@@ -1558,19 +1883,78 @@ function App() {
   }
 
   const tabLabelMap = {
-    dashboard: 'Today',
+    journey: 'Goal Journey',
+    planner: 'Daily Planner',
     goals: 'Plan',
     roadmap: 'Coach',
     progress: 'Review',
-    log: 'Journal'
+    log: 'Journal',
+    story: 'Story & Collection'
   };
-  const currentTabLabel = tabLabelMap[tab] || 'Today';
+  const currentTabLabel = tabLabelMap[tab] || 'Goal Journey';
 
   const openQuickStartPlanner = () => triggerGoalQuiz('welcome');
 
+  const toggleMotivationPurchase = (itemId) => {
+    if (!itemId) return;
+    setData((prev) => {
+      const reward = prev.settings?.motivationReward || {};
+      const purchased = Array.isArray(reward.purchasedItemIds) ? reward.purchasedItemIds : [];
+      const nextPurchased = purchased.includes(itemId)
+        ? purchased.filter((id) => id !== itemId)
+        : [...purchased, itemId];
+
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          motivationReward: {
+            ...reward,
+            purchasedItemIds: nextPurchased
+          }
+        }
+      };
+    });
+  };
+
+  // Live-derived so the map always reflects latest data without stale closures
+  const adventureGoal = adventureRef
+    ? (data.settings?.categories || [])
+      .find(c => c.id === adventureRef.categoryId)
+      ?.goals.find(g => g.id === adventureRef.goalId) || null
+    : null;
+
+  function updateGoalMilestones(categoryId, goalId, milestones) {
+    setData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        categories: (prev.settings?.categories || []).map(cat =>
+          cat.id === categoryId
+            ? { ...cat, goals: cat.goals.map(g => g.id === goalId ? { ...g, milestones } : g) }
+            : cat
+        ),
+      },
+    }));
+  }
+
+  function updateGoalTheme(categoryId, goalId, theme) {
+    setData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        categories: (prev.settings?.categories || []).map(cat =>
+          cat.id === categoryId
+            ? { ...cat, goals: cat.goals.map(g => g.id === goalId ? { ...g, theme } : g) }
+            : cat
+        ),
+      },
+    }));
+  }
+
   return (
-    <div className="app-shell">
-      <header className="hero">
+    <div className={`app-shell${tab === 'journey' ? ' app-shell-journey' : ''}`}>
+      <header className={`hero${tab === 'journey' ? ' hero--journey' : ''}`}>
         <div className="nav-menu-wrap hero-menu-anchor" ref={navMenuRef}>
           <button
             className="nav-menu-btn"
@@ -1578,7 +1962,7 @@ function App() {
             aria-label="Open navigation"
             aria-expanded={showNavMenu}
           >
-            {tab !== 'dashboard' && (
+            {tab !== 'journey' && (
               <span className="nav-current-label">
                 {currentTabLabel}
               </span>
@@ -1588,11 +1972,13 @@ function App() {
           {showNavMenu && (
             <div className="nav-menu-dropdown" role="menu">
               {[
-                ['dashboard', '🏠', 'Today'],
+                ['journey',   '🗺️', 'Goal Journey'],
+                ['planner',   '🗓️', 'Daily Planner'],
                 ['goals',     '🎯', 'Plan'],
                 ['roadmap',   '🧠', 'Coach'],
                 ['progress',  '📈', 'Review'],
                 ['log',       '✍️', 'Journal'],
+                              ['story',     '📖', 'Story & Collection'],
               ].map(([id, emoji, label]) => (
                 <button
                   key={id}
@@ -1611,6 +1997,13 @@ function App() {
               >
                 <span>⚙️</span> Settings
               </button>
+              <button
+                className="nav-menu-item"
+                onClick={() => { setShowJourneyInfo(true); setShowNavMenu(false); }}
+                role="menuitem"
+              >
+                <span>ℹ️</span> How It Works
+              </button>
             </div>
           )}
         </div>
@@ -1625,11 +2018,61 @@ function App() {
           <p className="hero-inline-quote">
             “{messageOfTheDay.text}” <span>— {messageOfTheDay.author}</span>
           </p>
+          {tab === 'journey' && journeyCategories.length > 0 && (
+            <div className="journey-header-tabs" role="tablist" aria-label="Journey goal categories">
+              {journeyCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={selectedJourneyCategoryId === category.id ? 'journey-header-tab active' : 'journey-header-tab'}
+                  onClick={() => {
+                    setSelectedJourneyCategoryId(category.id);
+                    document.getElementById(`journey-card-${category.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                  }}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="hero-actions">
+          <CoinCounter
+            coins={data.questData?.totalCoins || 0}
+            userRewards={data.settings?.rewards || []}
+            motivationReward={data.settings?.motivationReward}
+            canRedeemMotivation={!data.settings?.motivationReward?.requireGoalCompletion || (periodTrackableGoals.length > 0 && completedPeriodGoals >= periodTrackableGoals.length)}
+            onToggleShopPurchase={toggleMotivationPurchase}
+          />
           <Clock />
         </div>
       </header>
+
+      <UnlockModal unlock={activeUnlock} onDismiss={() => setActiveUnlock(null)} />
+
+      {adventureGoal && (
+        <AdventureMap
+          goal={adventureGoal}
+          onClose={() => setAdventureRef(null)}
+          onUpdateMilestones={milestones => updateGoalMilestones(adventureRef.categoryId, adventureRef.goalId, milestones)}
+          onUpdateTheme={theme => updateGoalTheme(adventureRef.categoryId, adventureRef.goalId, theme)}
+        />
+      )}
+
+      {showJourneyInfo && (
+        <div className="journey-info-overlay" onClick={() => setShowJourneyInfo(false)}>
+          <section className="journey-info-modal" onClick={(e) => e.stopPropagation()} aria-label="How NextStride works">
+            <h3>How this works in 3 simple steps</h3>
+            <p>Set a goal, log small wins, and track your rewards story as milestones unlock.</p>
+            <div className="journey-info-actions">
+              <button type="button" className="secondary" onClick={() => { setTab('goals'); setShowJourneyInfo(false); }}>1) Set a goal</button>
+              <button type="button" className="secondary" onClick={() => { setTab('log'); setShowJourneyInfo(false); }}>2) Log progress</button>
+              <button type="button" className="primary" onClick={() => { setTab('story'); setShowJourneyInfo(false); }}>3) View rewards story</button>
+              <button type="button" className="secondary" onClick={() => { setTab('planner'); setShowJourneyInfo(false); }}>Open Daily Planner</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* ── MOTIVATIONAL QUOTE SPLASH ────────────────── */}
       {showQuote && !showWelcome && (
@@ -1678,7 +2121,119 @@ function App() {
         </div>
       )}
 
-      {tab === 'dashboard' && (
+      {tab === 'journey' && (
+        <section className="journey-main-screen">
+          {allCategoryMapData.length ? (
+            <div className="journey-category-grid">
+              {allCategoryMapData.map((catData) => {
+                const goals = catData.goals;
+                const count = goals.length;
+                const yMap = { 1: ['45%'], 2: ['22%', '68%'], 3: ['12%', '46%', '78%'], 4: ['8%', '32%', '58%', '80%'] };
+                const yPositions = yMap[count] || yMap[4];
+                const xPositions = ['14%', '57%', '12%', '58%'];
+                const filledDots = Math.max(0, Math.min(5, Math.round((catData.overallPct / 100) * 5)));
+
+                return (
+                  <article
+                    id={`journey-card-${catData.categoryId}`}
+                    key={catData.categoryId}
+                    className={`quest-chart-card quest-chart-full quest-chart-${catData.theme} quest-chart-category-${catData.categoryKey}${selectedJourneyCategoryId === catData.categoryId ? ' active' : ''}`}
+                  >
+                    <p className="quest-chart-category-label">{catData.categoryName}</p>
+                    <div className="quest-map-canvas" aria-label={`${catData.categoryName} quest map`}>
+                      {goals.map((goal, i) => {
+                        const pillarConfig = resolveJourneyPillarConfig(goal.label);
+                        return (
+                          <button
+                            type="button"
+                            className={`quest-map-point quest-map-point-btn point-${i + 1}${pillarConfig ? ' clickable' : ''}`}
+                            key={goal.id}
+                            style={{ left: xPositions[i % 4], top: yPositions[i] }}
+                            onClick={() => openJourneyPillarEditor(goal.label)}
+                            disabled={!pillarConfig}
+                            aria-label={pillarConfig ? `Update ${goal.label}` : goal.label}
+                          >
+                            <span className="quest-step-index">{i + 1}</span>
+                            <div className="quest-step-main">
+                              <p className="quest-step-label">{goal.label}</p>
+                              <p className="quest-step-pct-inline">{goal.pct}%</p>
+                              <div className="quest-step-progress">
+                                <div className="quest-step-fill" style={{ width: `${goal.pct}%` }} />
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {!goals.length && (
+                        <p className="quest-map-empty-copy">Add goals in Plan to start this category map.</p>
+                      )}
+                    </div>
+                    <footer className="quest-chart-footer">
+                      <strong>{catData.overallPct}% Complete</strong>
+                      <div className="quest-chart-dots" aria-hidden="true">
+                        {Array.from({ length: 5 }).map((_, dotIndex) => (
+                          <span
+                            key={dotIndex}
+                            className={`quest-chart-dot${dotIndex < filledDots ? ' active' : ''}${dotIndex === 4 ? ' final' : ''}`}
+                          />
+                        ))}
+                      </div>
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <section className="quest-chart-empty">
+              <h3>Your first quest chart appears after you add a goal.</h3>
+              <p>Go to Plan and add one goal to unlock your first journey map.</p>
+              <button type="button" className="primary" onClick={() => setTab('goals')}>Go to Plan</button>
+            </section>
+          )}
+        </section>
+      )}
+
+      {journeyPillarEditor && (
+        <div className="journey-pillar-overlay" onClick={() => setJourneyPillarEditor(null)}>
+          <section className="journey-pillar-modal" onClick={(e) => e.stopPropagation()} aria-label={`Update ${journeyPillarEditor.label}`}>
+            <h3>{journeyPillarEditor.label}</h3>
+            <p>
+              Update today&apos;s value to move this pillar.
+              Target: {journeyPillarEditor.config.target} {journeyPillarEditor.config.unit}
+            </p>
+            <div className="journey-pillar-input-row">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setJourneyPillarDraft((prev) => String(Math.max(0, (Number(prev) || 0) - 1)))}
+              >
+                -1
+              </button>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={journeyPillarDraft}
+                onChange={(e) => setJourneyPillarDraft(e.target.value)}
+                aria-label={`${journeyPillarEditor.label} value`}
+              />
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setJourneyPillarDraft((prev) => String((Number(prev) || 0) + 1))}
+              >
+                +1
+              </button>
+            </div>
+            <div className="journey-pillar-actions">
+              <button type="button" className="secondary" onClick={() => setJourneyPillarEditor(null)}>Cancel</button>
+              <button type="button" className="primary" onClick={saveJourneyPillarEditor}>Save</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === 'planner' && (
         <section className="daily-planner-wrap">
           <section className="daily-planner-top card">
             <div className="daily-planner-headline">
@@ -1720,20 +2275,6 @@ function App() {
             </div>
 
           </section>
-
-          {latestCoachNote && (
-            <section className="card ai-coach-card" aria-label="Coach guidance">
-              <h3>Coach</h3>
-              <p className="ai-coach-message">{latestCoachNote.coachMessage || 'You are building momentum one step at a time.'}</p>
-              <p className="ai-coach-next"><strong>Next best action:</strong> {latestCoachNote.nextBestAction}</p>
-              {!!latestCoachNote.execution?.daily?.length && (
-                <p className="ai-coach-meta"><strong>Today:</strong> {latestCoachNote.execution.daily.slice(0, 2).join(' | ')}</p>
-              )}
-              {!!latestCoachNote.execution?.weekly?.length && (
-                <p className="ai-coach-meta"><strong>This week:</strong> {latestCoachNote.execution.weekly.slice(0, 2).join(' | ')}</p>
-              )}
-            </section>
-          )}
 
           <section className="daily-planner-grid planner-board-grid">
             <article className="card planner-card planner-todo">
@@ -1829,7 +2370,7 @@ function App() {
               <h3>Exercise</h3>
               <div className="planner-two-metrics">
                 <label>
-                  <span>Minutes</span>
+                  <span>Cardio (min)</span>
                   <input
                     type="number"
                     min="0"
@@ -1838,12 +2379,33 @@ function App() {
                   />
                 </label>
                 <label>
-                  <span>Steps</span>
+                  <span>Strength (min)</span>
                   <input
                     type="number"
                     min="0"
-                    value={planner.exerciseSteps || 0}
-                    onChange={(e) => updatePlanner({ exerciseSteps: Math.max(0, Number(e.target.value) || 0) })}
+                    value={planner.strengthMinutes || 0}
+                    onChange={(e) => updatePlanner({ strengthMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </label>
+              </div>
+              <div className="planner-two-metrics planner-health-metrics">
+                <label>
+                  <span>Protein (g)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={planner.proteinGrams || 0}
+                    onChange={(e) => updatePlanner({ proteinGrams: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </label>
+                <label>
+                  <span>Sleep (hrs)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={planner.sleepHours || 0}
+                    onChange={(e) => updatePlanner({ sleepHours: Math.max(0, Number(e.target.value) || 0) })}
                   />
                 </label>
               </div>
@@ -1951,6 +2513,16 @@ function App() {
 
                         return (
                           <article className="goal-detail-card" key={goal.id}>
+                            <div className="goal-journey-row">
+                              <button
+                                type="button"
+                                className="goal-journey-btn"
+                                onClick={() => setAdventureRef({ categoryId: goal.categoryId, goalId: goal.id })}
+                                aria-label={`View journey map for ${goal.name}`}
+                              >
+                                🗺️ View Journey
+                              </button>
+                            </div>
                             <div className={isMilestoneGoal ? 'goal-inline-progress-row milestone' : 'goal-inline-progress-row'}>
                               <h4>{goal.name}</h4>
                               {isMilestoneGoal ? (
@@ -2340,6 +2912,16 @@ function App() {
           </section>
         </section>
       )}
+
+        {tab === 'story' && (
+          <section className="card-grid">
+            <StoryCollectionTab
+              questData={data.questData}
+              streakDays={activityStreakDays}
+              totalLogs={totalActivityCount}
+            />
+          </section>
+        )}
 
       {/* ── CHECK-IN NOTE POPUP ─────────────────────────── */}
       {checkinPopup && (
@@ -2837,3 +3419,4 @@ function capitalize(str) {
 }
 
 export default App;
+

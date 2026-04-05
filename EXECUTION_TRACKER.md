@@ -5,6 +5,8 @@ Plan start date: 2026-03-30
 Cadence: 2 hours per day
 Tracking rule: A phase is done only when all exit criteria are validated.
 
+End-validation gate rule (strict): final validation is blocked unless all required process artifacts are present: (1) change log + rationale, (2) risk assessment with owners, (3) manual QA evidence links/screens, (4) rollback plan, and (5) named sign-off owners.
+
 ## 1) Timeline and Phase Status
 
 | Phase | Dates | Focus | Status | Exit Criteria |

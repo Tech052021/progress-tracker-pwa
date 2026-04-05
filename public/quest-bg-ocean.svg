@@ -1,0 +1,67 @@
+<svg width="900" height="1400" viewBox="0 0 900 1400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#48c6ef"/>
+      <stop offset="28%" stop-color="#1f8ec7"/>
+      <stop offset="62%" stop-color="#116498"/>
+      <stop offset="100%" stop-color="#0b3b62"/>
+    </linearGradient>
+    <radialGradient id="sunRays" cx="0.72" cy="0.12" r="0.48">
+      <stop offset="0%" stop-color="#f0fdff" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#b3f0ff" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#b3f0ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="reefA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2f9f8d"/>
+      <stop offset="100%" stop-color="#1e6c63"/>
+    </linearGradient>
+    <linearGradient id="reefB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3f6fb6"/>
+      <stop offset="100%" stop-color="#21457f"/>
+    </linearGradient>
+    <linearGradient id="sandGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f9c56a"/>
+      <stop offset="100%" stop-color="#d48a35"/>
+    </linearGradient>
+    <pattern id="grain" width="120" height="120" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="18" r="1" fill="#fff" opacity="0.07"/>
+      <circle cx="44" cy="76" r="1.2" fill="#000" opacity="0.06"/>
+      <circle cx="86" cy="30" r="1" fill="#fff" opacity="0.06"/>
+      <circle cx="98" cy="98" r="1.3" fill="#000" opacity="0.05"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="1400" fill="url(#water)"/>
+  <rect width="900" height="1400" fill="url(#sunRays)"/>
+
+  <g opacity="0.46">
+    <path d="M0 180 C180 120 350 140 520 210 C650 265 760 270 900 230" stroke="#c9f2ff" stroke-width="10" fill="none"/>
+    <path d="M0 250 C160 205 340 215 520 275 C660 320 770 330 900 296" stroke="#b6ecff" stroke-width="8" fill="none"/>
+    <path d="M0 320 C180 270 340 280 500 340 C650 396 760 404 900 372" stroke="#9de0ff" stroke-width="6" fill="none"/>
+  </g>
+
+  <path d="M0 760 C160 700 300 720 430 820 C560 920 730 940 900 900 L900 1400 L0 1400 Z" fill="url(#reefA)" opacity="0.86"/>
+  <path d="M0 980 C160 900 300 930 460 1040 C590 1128 760 1160 900 1142 L900 1400 L0 1400 Z" fill="url(#reefB)" opacity="0.9"/>
+
+  <g opacity="0.84">
+    <path d="M120 1080 C140 1010 178 968 232 930 C250 962 260 1005 262 1050 C240 1072 210 1088 178 1098 Z" fill="#ffb949"/>
+    <path d="M222 1086 C244 1004 290 952 354 910 C368 946 370 992 366 1042 C338 1072 302 1090 262 1100 Z" fill="#ff8e3c"/>
+    <path d="M724 1060 C742 1010 774 972 818 940 C834 968 840 1002 840 1042 C822 1068 796 1088 764 1100 Z" fill="#74d6b6"/>
+    <path d="M674 1088 C688 1020 718 980 760 944 C774 972 778 1010 774 1048 C754 1072 728 1090 698 1102 Z" fill="#4bb4a2"/>
+  </g>
+
+  <ellipse cx="580" cy="995" rx="92" ry="40" fill="url(#sandGlow)" opacity="0.88"/>
+  <ellipse cx="580" cy="995" rx="142" ry="68" fill="#ffd797" opacity="0.24"/>
+
+  <g opacity="0.52" fill="#d3f4ff">
+    <circle cx="130" cy="330" r="3"/>
+    <circle cx="170" cy="360" r="2.3"/>
+    <circle cx="220" cy="310" r="2.5"/>
+    <circle cx="660" cy="360" r="2.4"/>
+    <circle cx="700" cy="320" r="2.8"/>
+    <circle cx="748" cy="350" r="2.1"/>
+  </g>
+
+  <rect width="900" height="1400" fill="url(#grain)" opacity="0.48"/>
+  <rect x="0" y="1244" width="900" height="156" fill="#082943" opacity="0.34"/>
+</svg>

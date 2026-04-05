@@ -97,7 +97,10 @@ export function createSeedPlannerEntry(suggestedTasks, todayMustWin) {
     meals: { breakfast: false, lunch: false, dinner: false, snacks: false },
     waterCups: 0,
     exerciseMinutes: 0,
+    strengthMinutes: 0,
     exerciseSteps: 0,
+    proteinGrams: 0,
+    sleepHours: 0,
     gratitude: '',
     notes: '',
     tomorrow: ''
